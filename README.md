@@ -1,11 +1,10 @@
 # 🌌 Night Sky — Aurora Borealis & Mountain Lake
-### Standalone GPU Real-Time Wallpaper Engine Application (.EXE)
+### Standalone GPU Real-Time Wallpaper Engine Application & Live Web Demo
 
+[![Live Web Demo](https://img.shields.io/badge/🌐%20Live%20Demo-Run%20in%20Browser-success?style=for-the-badge&logo=googlechrome&logoColor=white)](https://seterneus.github.io/night-sky-wallpaper-engine/)
 [![Download .EXE](https://img.shields.io/badge/⬇%EF%B8%8F%20Download-wallpaper__app.exe%20(Direct)-blue?style=for-the-badge&logo=windows)](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/download/v1.0.0/wallpaper_app.exe)
 [![Release](https://img.shields.io/github/v/release/Seterneus/night-sky-wallpaper-engine?style=for-the-badge&color=purple)](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Wallpaper%20Engine-brightgreen.svg)]()
-[![Rendering](https://img.shields.io/badge/Rendering-OpenGL%203.3%20%2F%20ModernGL-orange.svg)]()
 
 ![Wallpaper Preview](preview.jpg)
 
@@ -13,7 +12,15 @@ A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallp
 
 ---
 
-## 🚀 Quick Download & Run
+## 🌐 Instant Live Web Demo (Any Browser & Mobile)
+
+**Experience the live GPU-rendered wallpaper directly in your browser without installing anything:**  
+👉 **[Launch Live Web Demo (GitHub Pages)](https://seterneus.github.io/night-sky-wallpaper-engine/)**  
+*(Works on Windows, macOS, Linux, iPhone, iPad, and Android)*
+
+---
+
+## 🚀 Desktop Installation (Wallpaper Engine & Windows)
 
 1. **[Click here to Download wallpaper_app.exe](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/download/v1.0.0/wallpaper_app.exe)** (Standalone `.exe`, ~61 MB).
 2. **Standalone**: Simply double-click `wallpaper_app.exe` to run immediately on any Windows PC.
@@ -23,7 +30,7 @@ A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallp
 
 ## 🌟 Key Features
 
-* **⚡ Real-Time GPU Shader Engine**: Full custom GLSL shader pipeline rendering procedurally with VSync locked to your monitor's native refresh rate (60Hz / 120Hz / 144Hz / 240Hz). Ultra-low CPU & GPU footprint.
+* **⚡ Real-Time GPU Shader Engine**: Full custom WebGL / GLSL shader pipeline rendering procedurally with VSync locked to your screen's native refresh rate (60Hz / 120Hz / 144Hz / 240Hz). Ultra-low CPU & GPU footprint.
 * **⛅ Dynamic Atmospheric Weather Cycles**:
   * **Auto-Cycles** randomly every **180–250 seconds** with **10-second cinematic smooth crossfades**.
   * **6 Weather States**: *Clear Starry Night*, *Gentle Mountain Breeze*, *Light Rain & Drizzle*, *Thunderstorm & Lightning*, *Winter Snowfall*, and *Lake Mist & Fog*.
@@ -43,10 +50,10 @@ A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallp
 * **🌠 Autonomous Meteors (Shooting Stars)**:
   * Periodic shooting stars (7–25s) with fading ionization trails.
 * **🔊 High-Fidelity Nature Audio Engine**:
-  * Multi-track layered audio: crackling campfire, lake water lap, alpine wind, gentle rain, heavy storm, snow crunch, crickets, 3 real recorded thunder claps, and 5 authentic owl calls.
+  * Multi-track layered audio: crackling campfire, lake water lap, alpine wind, gentle rain, heavy storm, snow crunch, crickets, thunder claps, and authentic owl calls.
 * **🕐 Minimalist Clock & Customization**:
   * High-DPI clock and date display in top-right corner.
-  * Full Wallpaper Engine properties integration via `project.json`.
+  * Full controls & hotkeys support.
 
 ---
 
