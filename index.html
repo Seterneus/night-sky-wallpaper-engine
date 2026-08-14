@@ -1331,8 +1331,10 @@ void main() {
     vec2 uv = v_uv;
     float aspect = u_resolution.x / u_resolution.y;
     
-    vec2 moon_pos = vec2(0.68, 0.78);
-    float horizon_y = 0.28;
+    // Adaptive composition scaling for landscape, ultrawide, and vertical portrait screens
+    float vert_factor = smoothstep(1.30, 0.55, aspect);
+    vec2 moon_pos = vec2(mix(0.68, 0.58, vert_factor), mix(0.78, 0.80, vert_factor));
+    float horizon_y = mix(0.28, 0.31, vert_factor);
     float total_rain = max(u_rain_light, u_rain_heavy);
     
     float wind_wave_mult = 1.0 + u_wind_amt * 1.3 + u_rain_light * 0.4 + u_rain_heavy * 1.2 + u_snow_amt * 0.3;
