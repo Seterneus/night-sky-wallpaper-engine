@@ -78,7 +78,9 @@ A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallp
 
 ---
 
-## 📜 Copyright & Proprietary License
+## 🛡️ Copyright, Ownership & Anti-Theft Notice
 
 Copyright &copy; 2026 **Samandar Abdullaev Sobirovich**. All Rights Reserved.  
-This software, source code, artwork, audio recordings, and HTML/WebGL applications are proprietary. Unauthorized copying, modification, redistribution, or commercial sale without prior written permission is strictly prohibited. See [LICENSE](LICENSE) for full details.
+* All source code, shaders, artwork, audio recordings, algorithms, and HTML5 web files are the **exclusive proprietary intellectual property of Samandar Abdullaev Sobirovich**.
+* **Strictly Prohibited**: Stealing, copying, cloning, scraping, unauthorized modifications, reverse engineering, redistribution, and commercial resale are strictly forbidden and protected under international copyright law.
+* For licensing inquiries or commercial use, contact the author. Full terms in [LICENSE](LICENSE).
