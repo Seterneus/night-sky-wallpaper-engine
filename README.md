@@ -1,12 +1,23 @@
 # 🌌 Night Sky — Aurora Borealis & Mountain Lake
 ### Standalone GPU Real-Time Wallpaper Engine Application (.EXE)
 
+[![Download .EXE](https://img.shields.io/badge/⬇%EF%B8%8F%20Download-wallpaper__app.exe%20(Direct)-blue?style=for-the-badge&logo=windows)](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/download/v1.0.0/wallpaper_app.exe)
+[![Release](https://img.shields.io/github/v/release/Seterneus/night-sky-wallpaper-engine?style=for-the-badge&color=purple)](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Wallpaper%20Engine-brightgreen.svg)]()
 [![Rendering](https://img.shields.io/badge/Rendering-OpenGL%203.3%20%2F%20ModernGL-orange.svg)]()
-[![Audio](https://img.shields.io/badge/Audio-Real%20Nature%20Soundscapes-purple.svg)]()
+
+![Wallpaper Preview](preview.jpg)
 
 A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallpaper. Features dynamic atmospheric weather, silky moonlight water reflections, procedural multi-octave Aurora Borealis, autonomous shooting stars, bioluminescent fireflies, an articulated flying owl silhouette, and 100% real recorded nature audio.
+
+---
+
+## 🚀 Quick Download & Run
+
+1. **[Click here to Download wallpaper_app.exe](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/download/v1.0.0/wallpaper_app.exe)** (Standalone `.exe`, ~61 MB).
+2. **Standalone**: Simply double-click `wallpaper_app.exe` to run immediately on any Windows PC.
+3. **Wallpaper Engine**: Open Wallpaper Engine $\rightarrow$ **Open Wallpaper** $\rightarrow$ **Open from File** $\rightarrow$ Select `wallpaper_app.exe` (or `project.json`).
 
 ---
 
@@ -57,19 +68,6 @@ A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallp
 | **`M`** | **Mute / Unmute** Audio |
 | **`B` / `H`** | Toggle Onscreen Pill Buttons visibility |
 | **`ESC`** | Exit Application |
-
----
-
-## 🚀 Installation
-
-### In Wallpaper Engine:
-1. Open **Wallpaper Engine**.
-2. Click **Open Wallpaper** $\rightarrow$ **Open from File / Application**.
-3. Select `wallpaper_app.exe` (or `project.json`).
-4. Click **Apply**.
-
-### Standalone:
-Simply double-click `wallpaper_app.exe` on any Windows PC.
 
 ---
 
