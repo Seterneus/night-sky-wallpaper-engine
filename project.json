@@ -1,9 +1,8 @@
 {
-  "file": "wallpaper_app.exe",
+  "file": "index.html",
   "title": "Night Sky - Aurora Borealis & Mountain Lake",
   "description": "A photorealistic, relaxing night mountain lake with dynamic atmospheric weather, silky moonlight, 100% real nature sounds, procedural aurora borealis, stars, and occasional flying owl silhouettes.",
-  "type": "application",
-  "arguments": "",
+  "type": "web",
   "visibility": "public",
   "tags": ["Nature", "Relaxing", "Fantasy", "Atmospheric"],
   "contentrating": "Everyone",
