@@ -1906,6 +1906,55 @@ void main() {
     });
 
     // -------------------------------------------------------------
+    // Wallpaper Engine Native Properties Listener (Web Wallpaper API)
+    // -------------------------------------------------------------
+    window.wallpaperPropertyListener = {
+        applyUserProperties: function(properties) {
+            if (properties.show_clock) {
+                document.getElementById('clock-container').style.display = properties.show_clock.value ? 'block' : 'none';
+            }
+            if (properties.show_ui_buttons) {
+                document.getElementById('controls-panel').classList.toggle('visible', properties.show_ui_buttons.value);
+            }
+            if (properties.weather_mode) {
+                const m = {
+                    'clear': 0, 'breeze': 1, 'light_rain': 2, 'heavy_rain': 3, 'snow': 4, 'fog': 5, 'auto': 6
+                };
+                if (m[properties.weather_mode.value] !== undefined) {
+                    setWeather(m[properties.weather_mode.value]);
+                }
+            }
+            if (properties.aurora_intensity) {
+                const a = { 'off': 0, 'soft': 1, 'moderate': 2, 'bright': 3, 'auto': 4 };
+                if (a[properties.aurora_intensity.value] !== undefined) {
+                    current_aurora_intensity_level = a[properties.aurora_intensity.value];
+                    const labels = ["Off (0%)", "Soft (30%)", "Moderate (50%)", "Bright (70%)", "Auto Bloom"];
+                    document.getElementById('btn-aurora-int').innerText = `Aurora: ${labels[current_aurora_intensity_level]} [T]`;
+                }
+            }
+            if (properties.aurora_color) {
+                const c = { 'emerald': 0, 'purple': 1, 'cyan': 2, 'random': 3 };
+                if (c[properties.aurora_color.value] !== undefined) {
+                    current_aurora_color_mode = c[properties.aurora_color.value] === 3 ? Math.floor(Math.random() * 3) : c[properties.aurora_color.value];
+                    const labels = ["Emerald", "Purple/Violet", "Arctic Cyan"];
+                    document.getElementById('btn-aurora-col').innerText = `Color: ${labels[current_aurora_color_mode]} [N]`;
+                }
+            }
+            if (properties.sound_enabled) {
+                if (!properties.sound_enabled.value) {
+                    if (soundEnabled && audioCtx) {
+                        soundEnabled = false;
+                        gainMaster.gain.setValueAtTime(0.0, audioCtx.currentTime);
+                        document.getElementById('btn-sound-toggle').innerText = '🔇';
+                    }
+                } else {
+                    if (!soundEnabled) startAudio();
+                }
+            }
+        }
+    };
+
+    // -------------------------------------------------------------
     // Main Render Loop (Native Refresh Rate VSync)
     // -------------------------------------------------------------
     let lastTime = performance.now();
