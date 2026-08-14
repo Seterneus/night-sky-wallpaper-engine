@@ -4,7 +4,7 @@
 [![Live Web Demo](https://img.shields.io/badge/🌐%20Live%20Demo-Run%20in%20Browser-success?style=for-the-badge&logo=googlechrome&logoColor=white)](https://seterneus.github.io/night-sky-wallpaper-engine/)
 [![Download .EXE](https://img.shields.io/badge/⬇%EF%B8%8F%20Download-wallpaper__app.exe%20(Direct)-blue?style=for-the-badge&logo=windows)](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/download/v1.0.0/wallpaper_app.exe)
 [![Release](https://img.shields.io/github/v/release/Seterneus/night-sky-wallpaper-engine?style=for-the-badge&color=purple)](https://github.com/Seterneus/night-sky-wallpaper-engine/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE)
 
 ![Wallpaper Preview](preview.jpg)
 
@@ -50,7 +50,7 @@ A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallp
 * **🌠 Autonomous Meteors (Shooting Stars)**:
   * Periodic shooting stars (7–25s) with fading ionization trails.
 * **🔊 High-Fidelity Nature Audio Engine**:
-  * Multi-track layered audio: crackling campfire, lake water lap, alpine wind, gentle rain, heavy storm, snow crunch, crickets, thunder claps, and authentic owl calls.
+  * Multi-track layered audio: crackling campfire, lake water lap, alpine wind, gentle rain, heavy storm, snow crunch, crickets, 3 real thunder claps, and 5 authentic owl calls.
 * **🕐 Minimalist Clock & Customization**:
   * High-DPI clock and date display in top-right corner.
   * Full controls & hotkeys support.
@@ -78,7 +78,7 @@ A photorealistic, relaxing, and real-time GPU-rendered night mountain lake wallp
 
 ---
 
-## 📜 License & Author
+## 📜 Copyright & Proprietary License
 
-Created by **Samandar Abdullaev Sobirovich**.  
-Licensed under the [MIT License](LICENSE).
+Copyright &copy; 2026 **Samandar Abdullaev Sobirovich**. All Rights Reserved.  
+This software, source code, artwork, audio recordings, and HTML/WebGL applications are proprietary. Unauthorized copying, modification, redistribution, or commercial sale without prior written permission is strictly prohibited. See [LICENSE](LICENSE) for full details.
