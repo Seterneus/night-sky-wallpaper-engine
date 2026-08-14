@@ -1603,6 +1603,7 @@ void main() {
     let owl_flight_duration = 15.0, owl_flight_start_time = 0.0;
     let owl_flight_wing_phase = 0.0, owl_flight_sound_played = false;
     let next_owl_flight = performance.now() / 1000 + (30 + Math.random() * 45);
+    let next_owl_ambient_call = performance.now() / 1000 + (30 + Math.random() * 30);
 
     function triggerOwlFlight() {
         owl_flight_active = true;
@@ -1663,7 +1664,7 @@ void main() {
                 [now + 2.60, 0.20], [now + 2.90, 0.00]
             ];
         }
-        playThunderSound();
+        playRealThunder(variant);
     }
 
     function evaluateLightning() {
@@ -1690,166 +1691,112 @@ void main() {
     }
 
     // -------------------------------------------------------------
-    // Web Audio API Synthesizer (Realistic Procedural Nature Sounds)
+    // Authentic 100% Real Audio Engine (Exact Files from EXE)
     // -------------------------------------------------------------
     let audioCtx = null;
     let soundEnabled = false;
     let gainMaster, gainTorch, gainWater, gainWind, gainRainL, gainRainH, gainSnow, gainCrickets;
 
-    function initAudioEngine() {
+    const audioBuffers = {};
+    const audioFiles = {
+        torch: 'assets/audio/torch.ogg',
+        water: 'assets/audio/water.ogg',
+        wind: 'assets/audio/wind.ogg',
+        rain_l: 'assets/audio/rain_light.ogg',
+        rain_h: 'assets/audio/rain_heavy.ogg',
+        snow: 'assets/audio/snow.ogg',
+        crickets: 'assets/audio/crickets.ogg',
+        thunder_1: 'assets/audio/thunder_1.wav',
+        thunder_2: 'assets/audio/thunder_2.wav',
+        thunder_3: 'assets/audio/thunder_3.wav',
+        owl_1: 'assets/audio/owl_1.ogg',
+        owl_2: 'assets/audio/owl_2.ogg',
+        owl_3: 'assets/audio/owl_3.ogg',
+        owl_4: 'assets/audio/owl_4.ogg',
+        owl_5: 'assets/audio/owl_5.ogg',
+    };
+
+    async function loadAudioFile(key, url) {
+        try {
+            const resp = await fetch(url);
+            const arrayBuf = await resp.arrayBuffer();
+            const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
+            audioBuffers[key] = audioBuf;
+            return audioBuf;
+        } catch (e) {
+            console.warn('Audio load notice for', key, e);
+            return null;
+        }
+    }
+
+    function createLoopTrack(audioBuf, gainNode) {
+        if (!audioBuf) return null;
+        const src = audioCtx.createBufferSource();
+        src.buffer = audioBuf;
+        src.loop = true;
+        src.connect(gainNode);
+        src.start();
+        return src;
+    }
+
+    async function initAudioEngine() {
         if (audioCtx) return;
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
 
         gainMaster = audioCtx.createGain();
-        gainMaster.gain.setValueAtTime(0.85, audioCtx.currentTime);
+        gainMaster.gain.setValueAtTime(0.90, audioCtx.currentTime);
         gainMaster.connect(audioCtx.destination);
 
-        // Helper to generate loop buffer noise
-        function createNoiseBuffer() {
-            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 4, audioCtx.sampleRate);
-            const data = buf.getChannelData(0);
-            for (let i = 0; i < data.length; ++i) {
-                data[i] = Math.random() * 2 - 1;
-            }
-            return buf;
-        }
-        const noiseBuf = createNoiseBuffer();
+        gainTorch = audioCtx.createGain(); gainTorch.gain.setValueAtTime(0.32, audioCtx.currentTime); gainTorch.connect(gainMaster);
+        gainWater = audioCtx.createGain(); gainWater.gain.setValueAtTime(0.22, audioCtx.currentTime); gainWater.connect(gainMaster);
+        gainWind  = audioCtx.createGain(); gainWind.gain.setValueAtTime(0.04, audioCtx.currentTime);  gainWind.connect(gainMaster);
+        gainRainL = audioCtx.createGain(); gainRainL.gain.setValueAtTime(0.0, audioCtx.currentTime);  gainRainL.connect(gainMaster);
+        gainRainH = audioCtx.createGain(); gainRainH.gain.setValueAtTime(0.0, audioCtx.currentTime);  gainRainH.connect(gainMaster);
+        gainSnow  = audioCtx.createGain(); gainSnow.gain.setValueAtTime(0.0, audioCtx.currentTime);   gainSnow.connect(gainMaster);
+        gainCrickets = audioCtx.createGain(); gainCrickets.gain.setValueAtTime(0.22, audioCtx.currentTime); gainCrickets.connect(gainMaster);
 
-        // 1. Campfire / Torch Crackle
-        const torchNode = audioCtx.createBufferSource();
-        torchNode.buffer = noiseBuf;
-        torchNode.loop = true;
-        const torchFilter = audioCtx.createBiquadFilter();
-        torchFilter.type = 'bandpass';
-        torchFilter.frequency.setValueAtTime(850, audioCtx.currentTime);
-        torchFilter.Q.setValueAtTime(3.5, audioCtx.currentTime);
-        gainTorch = audioCtx.createGain();
-        gainTorch.gain.setValueAtTime(0.28, audioCtx.currentTime);
-        torchNode.connect(torchFilter);
-        torchFilter.connect(gainTorch);
-        gainTorch.connect(gainMaster);
-        torchNode.start();
+        // Load all authentic audio tracks in parallel
+        await Promise.all(Object.entries(audioFiles).map(([k, u]) => loadAudioFile(k, u)));
 
-        // 2. Gentle Lake Water Lap
-        const waterNode = audioCtx.createBufferSource();
-        waterNode.buffer = noiseBuf;
-        waterNode.loop = true;
-        const waterFilter = audioCtx.createBiquadFilter();
-        waterFilter.type = 'lowpass';
-        waterFilter.frequency.setValueAtTime(450, audioCtx.currentTime);
-        gainWater = audioCtx.createGain();
-        gainWater.gain.setValueAtTime(0.22, audioCtx.currentTime);
-        waterNode.connect(waterFilter);
-        waterFilter.connect(gainWater);
-        gainWater.connect(gainMaster);
-        waterNode.start();
-
-        // 3. Mountain Wind
-        const windNode = audioCtx.createBufferSource();
-        windNode.buffer = noiseBuf;
-        windNode.loop = true;
-        const windFilter = audioCtx.createBiquadFilter();
-        windFilter.type = 'bandpass';
-        windFilter.frequency.setValueAtTime(280, audioCtx.currentTime);
-        windFilter.Q.setValueAtTime(2.0, audioCtx.currentTime);
-        gainWind = audioCtx.createGain();
-        gainWind.gain.setValueAtTime(0.04, audioCtx.currentTime);
-        windNode.connect(windFilter);
-        windFilter.connect(gainWind);
-        gainWind.connect(gainMaster);
-        windNode.start();
-
-        // 4. Light Rain
-        const rainLNode = audioCtx.createBufferSource();
-        rainLNode.buffer = noiseBuf;
-        rainLNode.loop = true;
-        const rainLFilter = audioCtx.createBiquadFilter();
-        rainLFilter.type = 'highpass';
-        rainLFilter.frequency.setValueAtTime(1400, audioCtx.currentTime);
-        gainRainL = audioCtx.createGain();
-        gainRainL.gain.setValueAtTime(0.0, audioCtx.currentTime);
-        rainLNode.connect(rainLFilter);
-        rainLFilter.connect(gainRainL);
-        gainRainL.connect(gainMaster);
-        rainLNode.start();
-
-        // 5. Heavy Rain / Storm
-        const rainHNode = audioCtx.createBufferSource();
-        rainHNode.buffer = noiseBuf;
-        rainHNode.loop = true;
-        const rainHFilter = audioCtx.createBiquadFilter();
-        rainHFilter.type = 'lowpass';
-        rainHFilter.frequency.setValueAtTime(1800, audioCtx.currentTime);
-        gainRainH = audioCtx.createGain();
-        gainRainH.gain.setValueAtTime(0.0, audioCtx.currentTime);
-        rainHNode.connect(rainHFilter);
-        rainHFilter.connect(gainRainH);
-        gainRainH.connect(gainMaster);
-        rainHNode.start();
-
-        // 6. Snow Ambient
-        const snowNode = audioCtx.createBufferSource();
-        snowNode.buffer = noiseBuf;
-        snowNode.loop = true;
-        const snowFilter = audioCtx.createBiquadFilter();
-        snowFilter.type = 'bandpass';
-        snowFilter.frequency.setValueAtTime(600, audioCtx.currentTime);
-        snowFilter.Q.setValueAtTime(1.2, audioCtx.currentTime);
-        gainSnow = audioCtx.createGain();
-        gainSnow.gain.setValueAtTime(0.0, audioCtx.currentTime);
-        snowNode.connect(snowFilter);
-        snowFilter.connect(gainSnow);
-        gainSnow.connect(gainMaster);
-        snowNode.start();
-
-        // 7. Night Crickets
-        const oscCricket = audioCtx.createOscillator();
-        oscCricket.type = 'sine';
-        oscCricket.frequency.setValueAtTime(4500, audioCtx.currentTime);
-        gainCrickets = audioCtx.createGain();
-        gainCrickets.gain.setValueAtTime(0.18, audioCtx.currentTime);
-        oscCricket.connect(gainCrickets);
-        gainCrickets.connect(gainMaster);
-        oscCricket.start();
+        createLoopTrack(audioBuffers.torch, gainTorch);
+        createLoopTrack(audioBuffers.water, gainWater);
+        createLoopTrack(audioBuffers.wind, gainWind);
+        createLoopTrack(audioBuffers.rain_l, gainRainL);
+        createLoopTrack(audioBuffers.rain_h, gainRainH);
+        createLoopTrack(audioBuffers.snow, gainSnow);
+        createLoopTrack(audioBuffers.crickets, gainCrickets);
     }
 
-    function playThunderSound() {
+    function playRealThunder(variant) {
         if (!soundEnabled || !audioCtx) return;
-        const t = audioCtx.currentTime;
-        const thunderOsc = audioCtx.createOscillator();
-        thunderOsc.type = 'sawtooth';
-        thunderOsc.frequency.setValueAtTime(75, t);
-        thunderOsc.frequency.exponentialRampToValueAtTime(25, t + 2.8);
+        const key = variant === 0 ? 'thunder_1' : (variant === 1 ? 'thunder_2' : 'thunder_3');
+        const buf = audioBuffers[key] || audioBuffers['thunder_1'];
+        if (!buf) return;
 
-        const thunderGain = audioCtx.createGain();
-        thunderGain.gain.setValueAtTime(0.01, t);
-        thunderGain.gain.linearRampToValueAtTime(0.65, t + 0.25);
-        thunderGain.gain.exponentialRampToValueAtTime(0.001, t + 3.2);
-
-        thunderOsc.connect(thunderGain);
-        thunderGain.connect(gainMaster);
-        thunderOsc.start(t);
-        thunderOsc.stop(t + 3.3);
-    }
-
-    function playOwlHoot() {
-        if (!soundEnabled || !audioCtx) return;
-        const t = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(420, t);
-        osc.frequency.exponentialRampToValueAtTime(380, t + 0.4);
-
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
         const g = audioCtx.createGain();
-        g.gain.setValueAtTime(0.0, t);
-        g.gain.linearRampToValueAtTime(0.25, t + 0.08);
-        g.gain.exponentialRampToValueAtTime(0.001, t + 0.75);
-
-        osc.connect(g);
+        g.gain.setValueAtTime(0.95, audioCtx.currentTime);
+        src.connect(g);
         g.connect(gainMaster);
-        osc.start(t);
-        osc.stop(t + 0.8);
+        src.start();
+    }
+
+    function playRealOwl() {
+        if (!soundEnabled || !audioCtx) return;
+        const variants = ['owl_1', 'owl_2', 'owl_3', 'owl_4', 'owl_5'];
+        const chosen = variants[Math.floor(Math.random() * variants.length)];
+        const buf = audioBuffers[chosen];
+        if (!buf) return;
+
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.35, audioCtx.currentTime);
+        src.connect(g);
+        g.connect(gainMaster);
+        src.start();
     }
 
     function startAudio() {
@@ -1873,7 +1820,7 @@ void main() {
         soundEnabled = !soundEnabled;
         if (soundEnabled) {
             audioCtx.resume();
-            gainMaster.gain.setValueAtTime(0.85, audioCtx.currentTime);
+            gainMaster.gain.setValueAtTime(0.90, audioCtx.currentTime);
             document.getElementById('btn-sound-toggle').innerText = '🔊';
         } else {
             gainMaster.gain.setValueAtTime(0.0, audioCtx.currentTime);
@@ -2075,7 +2022,7 @@ void main() {
                 else owl_flight_wing_phase = 0.05;
 
                 if (soundEnabled && !owl_flight_sound_played && flight_norm_t >= 0.35 && flight_norm_t <= 0.65) {
-                    playOwlHoot();
+                    playRealOwl();
                     owl_flight_sound_played = true;
                 }
             }
@@ -2084,10 +2031,16 @@ void main() {
             if (current_rain_heavy < 0.35 && currentTime >= next_owl_flight) triggerOwlFlight();
         }
 
-        // Dynamic Audio Volume Mixing
-        if (soundEnabled && audioCtx) {
+        // Occasional ambient owl hoots during calm night
+        if (soundEnabled && current_rain_heavy < 0.20 && !owl_flight_active && currentTime >= next_owl_ambient_call) {
+            playRealOwl();
+            next_owl_ambient_call = currentTime + (30 + Math.random() * 30);
+        }
+
+        // Dynamic Audio Volume Mixing with Smooth Transition
+        if (soundEnabled && audioCtx && gainTorch) {
             const nowA = audioCtx.currentTime;
-            gainTorch.gain.setTargetAtTime(0.28, nowA, 0.1);
+            gainTorch.gain.setTargetAtTime(0.32, nowA, 0.1);
             gainWater.gain.setTargetAtTime(0.22 + current_wind * 0.12, nowA, 0.1);
             gainWind.gain.setTargetAtTime(0.04 + current_wind * 0.55 + current_rain_heavy * 0.25, nowA, 0.1);
             gainRainL.gain.setTargetAtTime(current_rain_light * 0.40, nowA, 0.1);
@@ -2095,7 +2048,7 @@ void main() {
             gainSnow.gain.setTargetAtTime(current_snow * 0.40, nowA, 0.1);
 
             const precip = Math.max(current_rain_light, Math.max(current_rain_heavy, current_snow));
-            const cricketsVol = Math.max(0.0, 0.18 * (1.0 - precip * 2.0) * (1.0 - current_wind * 0.6));
+            const cricketsVol = Math.max(0.0, 0.22 * (1.0 - precip * 2.0) * (1.0 - current_wind * 0.6));
             gainCrickets.gain.setTargetAtTime(cricketsVol, nowA, 0.1);
         }
 
