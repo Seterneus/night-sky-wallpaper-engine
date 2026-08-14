@@ -1,0 +1,2270 @@
+import sys
+import os
+import time
+import math
+import random
+import ctypes
+from datetime import datetime
+import numpy as np
+import pygame
+import moderngl
+
+# Import Procedural Audio Engine
+import audio_engine
+
+# Helper for bundled PyInstaller assets
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+# 1. Enable True Native High-DPI Awareness on Windows
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor High DPI
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+# Initialize Pygame & Audio Mixer
+pygame.init()
+pygame.font.init()
+pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
+pygame.mixer.set_num_channels(20)
+
+# Get True Native Hardware Resolution
+info = pygame.display.Info()
+SCREEN_WIDTH = info.current_w
+SCREEN_HEIGHT = info.current_h
+
+# Set borderless fullscreen with OpenGL context and Hardware VSync
+screen = pygame.display.set_mode(
+    (SCREEN_WIDTH, SCREEN_HEIGHT),
+    pygame.OPENGL | pygame.DOUBLEBUF | pygame.NOFRAME,
+    vsync=1
+)
+pygame.display.set_caption("Night Sky - Dynamic Weather, Aurora & Real Thunder (GPU)")
+
+clock = pygame.time.Clock()
+
+# Create ModernGL Context
+ctx = moderngl.create_context()
+
+# -------------------------------------------------------------
+# Load Audio Loops (Recorded Assets with Procedural Fallbacks)
+# -------------------------------------------------------------
+torch_asset_path = resource_path(os.path.join("assets", "audio", "torch.ogg"))
+if not os.path.exists(torch_asset_path):
+    torch_asset_path = resource_path(os.path.join("assets", "audio", "torch.wav"))
+
+if os.path.exists(torch_asset_path):
+    snd_torch = pygame.mixer.Sound(torch_asset_path)
+else:
+    snd_torch = audio_engine.generate_torch_sound()
+
+water_asset_path = resource_path(os.path.join("assets", "audio", "water.ogg"))
+if not os.path.exists(water_asset_path):
+    water_asset_path = resource_path(os.path.join("assets", "audio", "water.wav"))
+
+if os.path.exists(water_asset_path):
+    snd_water = pygame.mixer.Sound(water_asset_path)
+else:
+    snd_water = audio_engine.generate_water_lapping_sound()
+
+wind_asset_path = resource_path(os.path.join("assets", "audio", "wind.ogg"))
+if not os.path.exists(wind_asset_path):
+    wind_asset_path = resource_path(os.path.join("assets", "audio", "wind.wav"))
+
+if os.path.exists(wind_asset_path):
+    snd_wind = pygame.mixer.Sound(wind_asset_path)
+else:
+    snd_wind = audio_engine.generate_wind_sound()
+
+rain_l_path = resource_path(os.path.join("assets", "audio", "rain_light.ogg"))
+if not os.path.exists(rain_l_path):
+    rain_l_path = resource_path(os.path.join("assets", "audio", "rain_light.wav"))
+
+if os.path.exists(rain_l_path):
+    snd_rain_l = pygame.mixer.Sound(rain_l_path)
+else:
+    snd_rain_l = audio_engine.generate_rain_sound(is_heavy=False)
+
+rain_h_path = resource_path(os.path.join("assets", "audio", "rain_heavy.ogg"))
+if not os.path.exists(rain_h_path):
+    rain_h_path = resource_path(os.path.join("assets", "audio", "rain_heavy.wav"))
+
+if os.path.exists(rain_h_path):
+    snd_rain_h = pygame.mixer.Sound(rain_h_path)
+else:
+    snd_rain_h = audio_engine.generate_rain_sound(is_heavy=True)
+
+snow_asset_path = resource_path(os.path.join("assets", "audio", "snow.ogg"))
+if not os.path.exists(snow_asset_path):
+    snow_asset_path = resource_path(os.path.join("assets", "audio", "snow.wav"))
+
+if os.path.exists(snow_asset_path):
+    snd_snow = pygame.mixer.Sound(snow_asset_path)
+else:
+    snd_snow = audio_engine.generate_snow_ambient_sound()
+
+crickets_asset_path = resource_path(os.path.join("assets", "audio", "crickets.ogg"))
+if not os.path.exists(crickets_asset_path):
+    crickets_asset_path = resource_path(os.path.join("assets", "audio", "crickets.wav"))
+
+if os.path.exists(crickets_asset_path):
+    snd_crickets = pygame.mixer.Sound(crickets_asset_path)
+else:
+    snd_crickets = audio_engine.generate_crickets_sound()
+
+# Load Real Recorded Owl Call Variations (Gentle, Level-Normalized)
+owl_sounds = []
+for i in [1, 2, 3, 4, 5]:
+    o_path = resource_path(os.path.join("assets", "audio", f"owl_{i}.ogg"))
+    if not os.path.exists(o_path):
+        o_path = resource_path(os.path.join("assets", "audio", f"owl_{i}.wav"))
+    if os.path.exists(o_path):
+        owl_sounds.append(pygame.mixer.Sound(o_path))
+
+if not owl_sounds:
+    owl_sounds.append(audio_engine.generate_owl_sound())
+
+# Load Real Recorded Thunder Strike Variations
+thunder_sounds = []
+for i in [1, 2, 3]:
+    t_path = resource_path(os.path.join("assets", "audio", f"thunder_{i}.wav"))
+    if os.path.exists(t_path):
+        thunder_sounds.append(pygame.mixer.Sound(t_path))
+        
+if not thunder_sounds:
+    thunder_sounds.append(audio_engine.generate_thunder_sound())
+
+# Dedicated Channel Allocation (No Channel Stealing)
+chan_torch    = pygame.mixer.Channel(0)
+chan_water    = pygame.mixer.Channel(1)
+chan_wind     = pygame.mixer.Channel(2)
+chan_rain_l   = pygame.mixer.Channel(3)
+chan_rain_h   = pygame.mixer.Channel(4)
+chan_snow     = pygame.mixer.Channel(5)
+chan_crickets = pygame.mixer.Channel(6)
+chan_thunder  = pygame.mixer.Channel(7)
+chan_owl      = pygame.mixer.Channel(8)
+
+chan_torch.play(snd_torch, loops=-1)
+chan_water.play(snd_water, loops=-1)
+chan_wind.play(snd_wind, loops=-1)
+chan_rain_l.play(snd_rain_l, loops=-1)
+chan_rain_h.play(snd_rain_h, loops=-1)
+chan_snow.play(snd_snow, loops=-1)
+chan_crickets.play(snd_crickets, loops=-1)
+
+chan_torch.set_volume(0.32)
+chan_water.set_volume(0.24)
+chan_wind.set_volume(0.0)
+chan_rain_l.set_volume(0.0)
+chan_rain_h.set_volume(0.0)
+chan_snow.set_volume(0.0)
+chan_crickets.set_volume(0.20)
+
+sound_enabled = True
+next_owl_time = time.time() + random.uniform(25.0, 45.0)
+
+# -------------------------------------------------------------
+# Main Background Scene Shaders (GPU Real-Time 120 FPS)
+# -------------------------------------------------------------
+VERTEX_SHADER = """
+#version 330 core
+in vec2 in_vert;
+out vec2 v_uv;
+
+void main() {
+    v_uv = in_vert * 0.5 + 0.5;
+    gl_Position = vec4(in_vert, 0.0, 1.0);
+}
+"""
+
+FRAGMENT_SHADER = """
+#version 330 core
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_rain_light;
+uniform float u_rain_heavy;
+uniform float u_snow_amt;
+uniform float u_wind_amt;
+uniform float u_fog_amt;
+uniform float u_aurora_amt;
+uniform int   u_aurora_color_mode; // 0 = Emerald, 1 = Purple-Violet, 2 = Arctic Cyan
+uniform float u_lightning;
+uniform vec2  u_lightning_pos;
+uniform vec4  u_shooting_star;
+uniform float u_shooting_star_progress;
+uniform float u_shooting_star_brightness;
+uniform float u_shooting_star_len;
+uniform vec4  u_owl_data;       // vec4(pos_x, pos_y, scale, alpha)
+uniform vec2  u_owl_dir;        // vec2(dir_x, dir_y)
+uniform float u_owl_wing_phase; // float (-0.8 to +0.8)
+
+// Fast Hashes
+float hash11(float p) {
+    p = fract(p * 0.1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return fract(p);
+}
+
+float hash12(vec2 p) {
+    vec3 p3  = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 hash22(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+// 2D Smooth Value Noise
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    
+    float a = hash12(i);
+    float b = hash12(i + vec2(1.0, 0.0));
+    float c = hash12(i + vec2(0.0, 1.0));
+    float d = hash12(i + vec2(1.0, 1.0));
+    
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// 5-Octave fBm
+float fbm5(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    mat2 rot = mat2(0.80, 0.60, -0.60, 0.80);
+    for (int i = 0; i < 5; ++i) {
+        v += a * noise(p);
+        p = rot * p * 2.02 + vec2(1.3, 2.7);
+        a *= 0.5;
+    }
+    return v;
+}
+
+// Pure Luminous Waning Crescent Moon
+vec3 compute_moon(vec2 uv, vec2 moon_pos, float aspect, float total_precip) {
+    vec2 p = (uv - moon_pos) * vec2(aspect, 1.0);
+    float d = length(p);
+    float moon_radius = 0.0324;
+    
+    float disc = smoothstep(moon_radius + 0.0009, moon_radius - 0.0009, d);
+    vec2 shadow_pos = (uv - (moon_pos + vec2(0.011, 0.0035))) * vec2(aspect, 1.0);
+    float shadow = smoothstep(moon_radius + 0.0009, moon_radius - 0.0009, length(shadow_pos));
+    
+    float crescent = max(0.0, disc - shadow);
+    
+    float craters = noise(p * 120.0) * 0.10 + noise(p * 260.0) * 0.05;
+    vec3 bright_surface = vec3(0.95, 0.98, 1.0) * (1.0 - craters);
+    
+    float moon_dim = mix(1.0, 0.75, u_rain_light) * mix(1.0, 0.35, u_rain_heavy) * mix(1.0, 0.85, u_snow_amt);
+    
+    float inner_halo = exp(-d * 28.0) * 0.60;
+    float mid_halo = exp(-d * 10.0) * (0.28 + total_precip * 0.14);
+    float outer_halo = exp(-d * 3.4) * (0.12 + total_precip * 0.10);
+    vec3 halo = vec3(0.65, 0.80, 1.0) * (inner_halo + mid_halo + outer_halo);
+    
+    return (bright_surface * crescent + halo) * moon_dim;
+}
+
+// Smooth Continuous Multi-Octave Aurora Borealis
+vec3 compute_aurora_curtain(vec2 uv, float t, float aspect, float offset_x, float speed, vec3 col_base, vec3 col_mid, vec3 col_top, float base_y) {
+    float x = uv.x * aspect * 1.35 + offset_x + t * speed * 0.018;
+    
+    float fold = sin(x * 1.3 + sin(x * 2.6) * 0.45) * 0.075 + sin(x * 3.6 - t * 0.02) * 0.035 + noise(vec2(x * 1.5, t * 0.015)) * 0.045;
+    float ribbon_y = base_y + fold;
+    
+    float h_diff = uv.y - ribbon_y;
+    if (h_diff < -0.04 || h_diff > 0.54) return vec3(0.0);
+    
+    float h_rel = clamp((h_diff + 0.04) / 0.54, 0.0, 1.0);
+    
+    float ray1 = noise(vec2(x * 20.0 + sin(uv.y * 16.0) * 0.35, uv.y * 3.2 - t * 0.038));
+    float ray2 = noise(vec2(x * 42.0 - t * 0.02, uv.y * 5.0 + t * 0.025));
+    float rays = pow((ray1 * 0.65 + ray2 * 0.35), 1.6) * 1.5;
+    
+    float intensity = smoothstep(0.0, 0.14, h_rel) * exp(-pow(h_rel * 2.3, 1.35)) * rays;
+    
+    vec3 col = mix(col_base, col_mid, smoothstep(0.05, 0.45, h_rel));
+    col = mix(col, col_top, smoothstep(0.45, 0.85, h_rel));
+    
+    return col * intensity;
+}
+
+vec3 compute_aurora_borealis(vec2 uv, float t, float aspect, float aurora_amt) {
+    if (aurora_amt <= 0.001 || uv.y < 0.28) return vec3(0.0);
+    
+    vec3 col_base1, col_mid1, col_top1;
+    vec3 col_base2, col_mid2, col_top2;
+    vec3 col_ambient;
+    
+    if (u_aurora_color_mode == 1) {
+        col_base1 = vec3(0.72, 0.12, 0.95);
+        col_mid1  = vec3(0.50, 0.08, 0.82);
+        col_top1  = vec3(0.92, 0.30, 0.70);
+        
+        col_base2 = vec3(0.55, 0.08, 0.85);
+        col_mid2  = vec3(0.85, 0.22, 0.90);
+        col_top2  = vec3(0.40, 0.15, 0.75);
+        
+        col_ambient = vec3(0.45, 0.08, 0.65);
+    } else if (u_aurora_color_mode == 2) {
+        col_base1 = vec3(0.05, 0.85, 0.98);
+        col_mid1  = vec3(0.08, 0.55, 0.85);
+        col_top1  = vec3(0.65, 0.82, 1.00);
+        
+        col_base2 = vec3(0.08, 0.68, 0.92);
+        col_mid2  = vec3(0.12, 0.88, 0.85);
+        col_top2  = vec3(0.45, 0.65, 0.95);
+        
+        col_ambient = vec3(0.04, 0.45, 0.65);
+    } else {
+        col_base1 = vec3(0.06, 0.96, 0.44);
+        col_mid1  = vec3(0.10, 0.75, 0.80);
+        col_top1  = vec3(0.42, 0.16, 0.65);
+        
+        col_base2 = vec3(0.04, 0.88, 0.55);
+        col_mid2  = vec3(0.20, 0.65, 0.85);
+        col_top2  = vec3(0.35, 0.14, 0.58);
+        
+        col_ambient = vec3(0.04, 0.65, 0.35);
+    }
+    
+    vec3 c1 = compute_aurora_curtain(uv, t, aspect, 0.0, 1.0, col_base1, col_mid1, col_top1, 0.42);
+    vec3 c2 = compute_aurora_curtain(uv, t, aspect, 4.2, 0.72, col_base2, col_mid2, col_top2, 0.48);
+    
+    float h_glow = exp(-pow((uv.y - 0.44) * 4.2, 2.0)) * 0.12;
+    vec3 ambient_glow = col_ambient * h_glow;
+    
+    return (c1 * 1.4 + c2 * 0.90 + ambient_glow) * aurora_amt;
+}
+
+// Dense Multi-Layered Clouds
+vec3 compute_clouds(vec2 uv, float t, float aspect, vec2 moon_pos, float total_precip, out float cloud_density) {
+    float height_start = mix(0.32, 0.22, u_rain_heavy);
+    float height_mask = smoothstep(height_start, 0.75, uv.y);
+    if (height_mask <= 0.01) {
+        cloud_density = 0.0;
+        return vec3(0.0);
+    }
+    
+    vec2 p = (uv - vec2(0.0, 0.5)) * vec2(aspect, 1.0);
+    p.x += t * (0.008 + u_wind_amt * 0.012 + u_rain_heavy * 0.008);
+    
+    vec2 q = vec2(fbm5(p * 1.8), fbm5(p * 1.8 + vec2(5.2, 1.3)));
+    float c = fbm5(p * 2.2 + 2.0 * q + vec2(t * 0.005, 0.0));
+    
+    float base_threshold = mix(0.36, 0.22, u_rain_light);
+    base_threshold = mix(base_threshold, 0.08, u_rain_heavy);
+    base_threshold = mix(base_threshold, 0.28, u_snow_amt);
+    
+    float density = smoothstep(base_threshold, 0.72, c) * height_mask;
+    density = mix(density, min(1.0, density * 1.45 + 0.15 * height_mask), u_rain_heavy);
+    cloud_density = density;
+    
+    vec3 dark_cloud = mix(vec3(0.006, 0.015, 0.035), vec3(0.004, 0.009, 0.022), u_rain_light);
+    dark_cloud = mix(dark_cloud, vec3(0.002, 0.006, 0.015), u_rain_heavy);
+    dark_cloud = mix(dark_cloud, vec3(0.008, 0.018, 0.038), u_snow_amt);
+    
+    float d_moon = length((uv - moon_pos) * vec2(aspect, 1.0));
+    float lunar_light = exp(-d_moon * 4.5) * pow(c, 2.0) * mix(1.3, 0.85, u_rain_light) * mix(1.0, 0.35, u_rain_heavy);
+    vec3 silver_fringe = vec3(0.55, 0.72, 0.95) * lunar_light * density;
+    
+    if (u_lightning > 0.001) {
+        float d_light = length((uv - u_lightning_pos) * vec2(aspect, 1.0));
+        float sheet_glow = exp(-d_light * 2.4) * u_lightning;
+        float cloud_inner = pow(c, 1.5) * density;
+        vec3 lightning_col = vec3(0.78, 0.88, 1.0) * (sheet_glow * 3.5 + exp(-d_light * 6.0) * 4.0) * cloud_inner;
+        silver_fringe += lightning_col;
+    }
+    
+    return dark_cloud * density + silver_fringe;
+}
+
+// Compute Living Stars
+vec3 compute_stars(vec2 uv, float t, float cloud_density, float total_precip) {
+    vec3 star_color = vec3(0.0);
+    float star_visibility = (1.0 - cloud_density * 0.90) * (1.0 - u_rain_light * 0.35) * (1.0 - u_rain_heavy * 0.92) * (1.0 - u_snow_amt * 0.30);
+    if (star_visibility <= 0.01) return vec3(0.0);
+    
+    for (int layer = 0; layer < 4; ++layer) {
+        float grid_scale = (layer == 0) ? 90.0 : ((layer == 1) ? 55.0 : ((layer == 2) ? 28.0 : 14.0));
+        float depth = (layer == 0) ? 0.20 : ((layer == 1) ? 0.40 : ((layer == 2) ? 0.70 : 1.0));
+        
+        vec2 p = uv * grid_scale;
+        p.x += t * 0.008 * depth;
+        
+        vec2 grid_id = floor(p);
+        vec2 grid_uv = fract(p) - 0.5;
+        
+        float border_margin = 0.5 - max(abs(grid_uv.x), abs(grid_uv.y));
+        float cell_window = smoothstep(0.0, 0.12, border_margin);
+        
+        vec2 rand_pos = hash22(grid_id) - 0.5;
+        float exists = hash12(grid_id + 11.0);
+        
+        float threshold = (layer == 0) ? 0.60 : ((layer == 1) ? 0.75 : ((layer == 2) ? 0.90 : 0.97));
+        
+        if (exists > threshold) {
+            vec2 offset = rand_pos * 0.68;
+            float dist = length(grid_uv - offset);
+            
+            float speed1 = 0.8 + hash12(grid_id + 3.0) * 1.8;
+            float speed2 = 2.5 + hash12(grid_id + 5.0) * 3.5;
+            float phase = hash12(grid_id + 7.0) * 6.2831;
+            
+            float wave = (sin(t * speed1 + phase) * 0.6 + sin(t * speed2 + phase * 1.4) * 0.4 + 1.0) * 0.5;
+            float min_b = (layer == 0) ? 0.20 : ((layer == 1) ? 0.25 : 0.40);
+            float brightness = mix(min_b, 1.0, wave);
+            
+            float col_seed = hash12(grid_id + 19.0);
+            vec3 base_col = (col_seed < 0.42) ? vec3(1.0, 1.0, 1.0) :
+                            ((col_seed < 0.72) ? vec3(0.82, 0.92, 1.0) :
+                            ((col_seed < 0.88) ? vec3(1.0, 0.96, 0.88) : vec3(1.0, 0.84, 0.68)));
+            
+            float star_r = (layer == 0) ? 0.020 : ((layer == 1) ? 0.032 : ((layer == 2) ? 0.050 : 0.075));
+            float core = smoothstep(star_r, 0.0, dist) * brightness;
+            
+            float halo_radius = (layer == 3 ? 20.0 : (layer == 2 ? 32.0 : 52.0));
+            float halo = exp(-dist * halo_radius) * brightness * (layer >= 2 ? 0.30 : 0.08) * cell_window;
+            
+            vec3 st = base_col * (core + halo);
+            
+            if (layer == 3) {
+                float glint_phase = sin(t * 0.35 + phase * 2.2);
+                if (glint_phase > 0.80) {
+                    float glint_amt = (glint_phase - 0.80) / 0.20;
+                    vec2 d_uv = abs(grid_uv - offset);
+                    float cross_flare = (smoothstep(0.012, 0.0, d_uv.y) * smoothstep(0.25, 0.0, d_uv.x) +
+                                         smoothstep(0.012, 0.0, d_uv.x) * smoothstep(0.25, 0.0, d_uv.y)) * glint_amt * 0.50 * cell_window;
+                    st += base_col * cross_flare;
+                }
+            }
+            
+            star_color += st * star_visibility;
+        }
+    }
+    
+    return star_color;
+}
+
+// Compute Rare Luminous Shooting Star (Refined Pinpoint Head, Needle-Thin Plasma Trail)
+vec3 compute_shooting_star(vec2 uv, float aspect, float cloud_density, float total_precip) {
+    if (u_shooting_star_brightness <= 0.001 || u_shooting_star_progress <= 0.0) return vec3(0.0);
+    
+    float visibility = (1.0 - cloud_density * 0.85) * (1.0 - u_rain_heavy * 0.90) * (1.0 - u_rain_light * 0.30);
+    if (visibility <= 0.01) return vec3(0.0);
+    
+    vec2 head = u_shooting_star.xy + u_shooting_star.zw * u_shooting_star_progress;
+    vec2 dir_norm = (length(u_shooting_star.zw) > 0.0001) ? normalize(u_shooting_star.zw) : vec2(0.89, -0.45);
+    
+    float effective_len = u_shooting_star_len * smoothstep(0.0, 0.10, u_shooting_star_progress);
+    vec2 tail = head - dir_norm * effective_len;
+    
+    vec2 pa = (uv - tail) * vec2(aspect, 1.0);
+    vec2 ba = (head - tail) * vec2(aspect, 1.0);
+    float ba_len_sq = dot(ba, ba);
+    if (ba_len_sq < 0.0000001) return vec3(0.0);
+    
+    float h = clamp(dot(pa, ba) / ba_len_sq, 0.0, 1.0);
+    float d_line = length(pa - ba * h);
+    
+    // Needle-thin core beam
+    float core = exp(-d_line * 7500.0) * pow(h, 0.85) * 1.6;
+    // Delicate ion plasma trail (soft starlight tint)
+    float plasma = exp(-d_line * 2000.0) * pow(h, 1.5) * 0.65;
+    // Soft outer atmosphere ionization
+    float halo = exp(-d_line * 500.0) * pow(h, 2.5) * 0.20;
+    
+    // Pinpoint sparkling star head
+    float d_head = length((uv - head) * vec2(aspect, 1.0));
+    float head_flare = exp(-d_head * 5000.0) * 1.8 + exp(-d_head * 1500.0) * 0.45;
+    
+    vec3 col_core = vec3(1.0, 1.0, 1.0);
+    vec3 col_plasma = vec3(0.72, 0.90, 1.0);
+    vec3 col_halo = vec3(0.40, 0.70, 1.0);
+    
+    vec3 meteor = (col_core * (core + head_flare) + col_plasma * plasma + col_halo * halo);
+    return meteor * (u_shooting_star_brightness * 0.80) * visibility;
+}
+
+// Dual-Layer Mountains
+void compute_dual_mountains(vec2 uv, float aspect, float horizon_y, out float mask_far_high, out float mask_near_low) {
+    mask_far_high = 0.0;
+    mask_near_low = 0.0;
+    
+    if (uv.y >= horizon_y - 0.005 && uv.y <= horizon_y + 0.22) {
+        float x_far = uv.x * aspect * 7.5 + 1.2;
+        float base_hf = 0.055 + (sin(x_far * 0.95) * 0.024 + cos(x_far * 2.2 + 0.6) * 0.018 + noise(vec2(x_far * 1.8, 0.0)) * 0.032);
+        float peak_f1 = abs(fract(x_far * 1.2) - 0.5) * 0.032;
+        float peak_f2 = abs(fract(x_far * 2.8 + 0.3) - 0.5) * 0.018;
+        float max_y_far = horizon_y + base_hf + peak_f1 + peak_f2;
+        mask_far_high = smoothstep(max_y_far + 0.0022, max_y_far - 0.0016, uv.y);
+    }
+    
+    if (uv.y >= horizon_y - 0.005 && uv.y <= horizon_y + 0.16) {
+        float x_near = uv.x * aspect * 12.0;
+        float base_hn = 0.035 + (sin(x_near * 1.15) * 0.016 + cos(x_near * 2.7) * 0.014 + noise(vec2(x_near * 2.2, 0.0)) * 0.024);
+        float peak_n1 = abs(fract(x_near * 1.6) - 0.5) * 0.022;
+        float peak_n2 = abs(fract(x_near * 3.1 + 0.4) - 0.5) * 0.014;
+        float peak_n3 = noise(vec2(x_near * 6.5, 0.0)) * 0.008;
+        float max_y_near = horizon_y + base_hn + peak_n1 + peak_n2 + peak_n3;
+        mask_near_low = smoothstep(max_y_near + 0.0020, max_y_near - 0.0015, uv.y);
+    }
+}
+
+// Naturally Flowing Lake Mist
+vec3 compute_horizon_mist(vec2 uv, float t, float aspect, float horizon_y, float fog_amt) {
+    float mist_vertical = exp(-pow((uv.y - horizon_y) * mix(16.0, 9.0, fog_amt), 2.0));
+    if (mist_vertical <= 0.002) return vec3(0.0);
+    
+    vec2 p1 = vec2(uv.x * aspect * 2.2 + t * 0.012, (uv.y - horizon_y) * 14.0 + sin(t * 0.4 + uv.x * 3.0) * 0.08);
+    vec2 p2 = vec2(uv.x * aspect * 4.0 + t * 0.007, (uv.y - horizon_y) * 20.0 + cos(t * 0.3 + uv.x * 5.0) * 0.06);
+    vec2 p3 = vec2(uv.x * aspect * 1.2 + t * 0.018, (uv.y - horizon_y) * 8.0);
+    
+    float m1 = noise(p1);
+    float m2 = noise(p2 + vec2(3.2, 1.7));
+    float m3 = noise(p3 + vec2(7.1, 4.5));
+    
+    float flowing_mist = m1 * 0.50 + m2 * 0.30 + m3 * 0.20;
+    float max_density = mix(0.14, 0.45, fog_amt);
+    float density = mist_vertical * smoothstep(0.20, 0.80, flowing_mist) * max_density;
+    
+    vec3 col_mist = mix(vec3(0.040, 0.085, 0.17), vec3(0.055, 0.100, 0.19), fog_amt);
+    return col_mist * density;
+}
+
+// Procedural Multi-Layered Gentle Snowfall
+vec3 compute_snowfall(vec2 uv, float t, float aspect, float snow_amt) {
+    if (snow_amt <= 0.001) return vec3(0.0);
+    
+    vec3 snow_col = vec3(0.85, 0.92, 1.00);
+    float total_snow = 0.0;
+    
+    float wind_drift = u_wind_amt * 0.15;
+    
+    for (int l = 0; l < 3; ++l) {
+        float scale = (l == 0) ? 35.0 : ((l == 1) ? 22.0 : 12.0);
+        float fall_speed = (l == 0) ? 0.85 : ((l == 1) ? 1.25 : 1.75);
+        float flake_size = (l == 0) ? 0.022 : ((l == 1) ? 0.038 : 0.065);
+        
+        vec2 sp = vec2((uv.x + wind_drift * uv.y) * aspect * scale, uv.y * scale + t * fall_speed);
+        sp.x += sin(t * 1.5 + sp.y * 0.8) * 0.35;
+        
+        vec2 grid_id = floor(sp);
+        vec2 grid_f  = fract(sp) - 0.5;
+        
+        float exists = hash12(grid_id + float(l) * 47.3);
+        if (exists > (l == 2 ? 0.90 : 0.75)) {
+            vec2 offset = (hash22(grid_id) - 0.5) * 0.65;
+            float dist = length(grid_f - offset);
+            
+            float flake = smoothstep(flake_size, 0.0, dist);
+            float softness = (l == 2) ? exp(-dist * 18.0) * 0.4 : 0.0;
+            
+            total_snow += (flake + softness) * (l == 2 ? 0.85 : (l == 1 ? 0.65 : 0.45)) * exists;
+        }
+    }
+    return snow_col * total_snow * snow_amt;
+}
+
+// Light Rain Streaks
+vec3 compute_light_rain_streaks(vec2 uv, float t, float aspect, float light_amt) {
+    if (light_amt <= 0.001) return vec3(0.0);
+    
+    vec3 rain_col = vec3(0.55, 0.72, 0.90);
+    float rain_light = 0.0;
+    float slant = 0.12 + u_wind_amt * 0.08;
+    
+    vec2 p1 = vec2((uv.x + uv.y * slant) * aspect * 160.0, uv.y * 18.0 + t * 32.0);
+    vec2 id1 = floor(p1);
+    vec2 f1 = fract(p1);
+    float exists1 = hash12(id1);
+    if (exists1 > 0.88) {
+        float streak_w = 0.035;
+        float dist_x = abs(f1.x - 0.5);
+        float streak = smoothstep(streak_w, 0.0, dist_x) * smoothstep(0.0, 0.20, f1.y) * smoothstep(1.0, 0.70, f1.y);
+        rain_light += streak * 0.16 * exists1;
+    }
+    
+    vec2 p2 = vec2((uv.x + uv.y * slant) * aspect * 90.0, uv.y * 12.0 + t * 38.0);
+    vec2 id2 = floor(p2);
+    vec2 f2 = fract(p2);
+    float exists2 = hash12(id2 + 19.4);
+    if (exists2 > 0.94) {
+        float streak_w = 0.045;
+        float dist_x = abs(f2.x - 0.5);
+        float streak = smoothstep(streak_w, 0.0, dist_x) * smoothstep(0.0, 0.25, f2.y) * smoothstep(1.0, 0.65, f2.y);
+        rain_light += streak * 0.22 * exists2;
+    }
+    
+    return rain_col * rain_light * light_amt;
+}
+
+// Heavy Rain Streaks
+vec3 compute_heavy_rain_streaks(vec2 uv, float t, float aspect, float heavy_amt) {
+    if (heavy_amt <= 0.001) return vec3(0.0);
+    
+    vec3 rain_col = vec3(0.68, 0.82, 0.98);
+    float rain_light = 0.0;
+    float slant = 0.18 + u_wind_amt * 0.12;
+    
+    vec2 p1 = vec2((uv.x + uv.y * slant) * aspect * 140.0, uv.y * 24.0 + t * 50.0);
+    vec2 id1 = floor(p1);
+    vec2 f1 = fract(p1);
+    float exists1 = hash12(id1);
+    if (exists1 > 0.76) {
+        float streak_w = 0.055;
+        float dist_x = abs(f1.x - 0.5);
+        float streak = smoothstep(streak_w, 0.0, dist_x) * smoothstep(0.0, 0.15, f1.y) * smoothstep(1.0, 0.75, f1.y);
+        rain_light += streak * 0.38 * exists1;
+    }
+    
+    vec2 p2 = vec2((uv.x + uv.y * slant) * aspect * 65.0, uv.y * 14.0 + t * 62.0);
+    vec2 id2 = floor(p2);
+    vec2 f2 = fract(p2);
+    float exists2 = hash12(id2 + 37.1);
+    if (exists2 > 0.85) {
+        float streak_w = 0.075;
+        float dist_x = abs(f2.x - 0.5);
+        float streak = smoothstep(streak_w, 0.0, dist_x) * smoothstep(0.0, 0.20, f2.y) * smoothstep(1.0, 0.65, f2.y);
+        rain_light += streak * 0.55 * exists2;
+    }
+    
+    if (u_lightning > 0.01) {
+        rain_col += vec3(0.35, 0.45, 0.60) * u_lightning;
+    }
+    
+    return rain_col * rain_light * heavy_amt;
+}
+
+// Rain Droplet Ripples on Lake Surface
+float compute_rain_ripples(vec2 uv, float t, float aspect, float horizon_y, float total_rain) {
+    if (total_rain <= 0.001 || uv.y >= horizon_y) return 0.0;
+    
+    float ripples = 0.0;
+    float grid_density = mix(12.0, 18.0, u_rain_heavy);
+    vec2 grid_uv = vec2(uv.x * aspect * grid_density, (horizon_y - uv.y) * grid_density * 1.5);
+    vec2 id = floor(grid_uv);
+    vec2 f = fract(grid_uv) - 0.5;
+    
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            vec2 g_id = id + vec2(float(dx), float(dy));
+            vec2 cell_f = f - vec2(float(dx), float(dy));
+            
+            float spawn_phase = hash12(g_id * 3.17) * 6.2831;
+            float rip_speed = mix(1.2, 1.9, u_rain_heavy);
+            float rip_age = fract(t * rip_speed + spawn_phase);
+            float rip_radius = rip_age * 0.40;
+            
+            float dist = length(cell_f);
+            float ring = abs(dist - rip_radius);
+            float wave = smoothstep(0.028, 0.0, ring) * (1.0 - rip_age);
+            
+            ripples += wave * mix(0.10, 0.24, u_rain_heavy);
+        }
+    }
+    
+    return ripples * total_rain;
+}
+
+// Helper: Single Curved Grass Blade with Subtle Organic Flutter
+float draw_grass_blade(vec2 uv, vec2 base, float height, float curve, float aspect, float t) {
+    vec2 p = (uv - base) * vec2(aspect, 1.0);
+    if (p.y < 0.0 || p.y > height) return 0.0;
+    float t_h = p.y / height;
+    float flutter = sin(t * (2.2 + u_wind_amt * 2.4) + base.x * 48.0) * (0.0008 + u_wind_amt * 0.0022 + u_rain_heavy * 0.0028) * pow(t_h, 1.8);
+    float x_offset = (curve + flutter) * pow(t_h, 1.7);
+    float width = 0.0016 * (1.0 - t_h * 0.90);
+    return smoothstep(width + 0.0005, width - 0.0005, abs(p.x - x_offset));
+}
+
+// Helper: Smooth Rounded River Pebble
+float draw_pebble(vec2 uv, vec2 center, vec2 radii, float aspect) {
+    vec2 p = (uv - center) * vec2(aspect, 1.0);
+    float d = length(p / radii);
+    return smoothstep(1.0, 0.85, d);
+}
+
+// Organic Left Shoreline Ground
+void compute_left_shore_scene(vec2 uv, float t, float aspect, out float fg_mask, out vec3 torch_light) {
+    fg_mask = 0.0;
+    torch_light = vec3(0.0);
+    
+    float base_rock = 0.048 * exp(-pow(uv.x * 4.4, 1.35));
+    float mounds = noise(vec2(uv.x * 16.0, 0.0)) * 0.008 + noise(vec2(uv.x * 32.0, 0.0)) * 0.003;
+    float rock_profile = (base_rock + mounds) * smoothstep(0.36, 0.24, uv.x);
+    float ground_mask = (uv.x < 0.36) ? smoothstep(rock_profile + 0.0012, rock_profile - 0.0012, uv.y) : 0.0;
+    
+    float pebbles = 0.0;
+    pebbles = max(pebbles, draw_pebble(uv, vec2(0.075, 0.038), vec2(0.016, 0.008), aspect));
+    pebbles = max(pebbles, draw_pebble(uv, vec2(0.155, 0.028), vec2(0.020, 0.010), aspect));
+    pebbles = max(pebbles, draw_pebble(uv, vec2(0.215, 0.018), vec2(0.015, 0.007), aspect));
+    pebbles = max(pebbles, draw_pebble(uv, vec2(0.275, 0.010), vec2(0.012, 0.006), aspect));
+    
+    float cairn = 0.0;
+    cairn = max(cairn, draw_pebble(uv, vec2(0.038, 0.045), vec2(0.014, 0.007), aspect));
+    cairn = max(cairn, draw_pebble(uv, vec2(0.038, 0.056), vec2(0.012, 0.006), aspect));
+    cairn = max(cairn, draw_pebble(uv, vec2(0.038, 0.065), vec2(0.010, 0.005), aspect));
+    cairn = max(cairn, draw_pebble(uv, vec2(0.038, 0.073), vec2(0.007, 0.004), aspect));
+    cairn = max(cairn, draw_pebble(uv, vec2(0.038, 0.079), vec2(0.004, 0.003), aspect));
+    
+    float grass = 0.0;
+    float wind_sway = sin(t * (1.6 + u_wind_amt * 1.8 + u_rain_heavy * 1.5)) * (0.002 + u_wind_amt * 0.003 + u_rain_heavy * 0.003);
+    
+    grass = max(grass, draw_grass_blade(uv, vec2(0.055, 0.042), 0.022,  0.008 + wind_sway, aspect, t));
+    grass = max(grass, draw_grass_blade(uv, vec2(0.058, 0.041), 0.026, -0.006 + wind_sway, aspect, t));
+    grass = max(grass, draw_grass_blade(uv, vec2(0.062, 0.039), 0.018,  0.005 + wind_sway, aspect, t));
+    
+    grass = max(grass, draw_grass_blade(uv, vec2(0.108, 0.034), 0.024, -0.007 + wind_sway, aspect, t));
+    grass = max(grass, draw_grass_blade(uv, vec2(0.114, 0.033), 0.028,  0.006 + wind_sway, aspect, t));
+    grass = max(grass, draw_grass_blade(uv, vec2(0.142, 0.029), 0.020,  0.008 + wind_sway, aspect, t));
+    
+    grass = max(grass, draw_grass_blade(uv, vec2(0.180, 0.022), 0.022, -0.005 + wind_sway, aspect, t));
+    grass = max(grass, draw_grass_blade(uv, vec2(0.186, 0.021), 0.025,  0.007 + wind_sway, aspect, t));
+    grass = max(grass, draw_grass_blade(uv, vec2(0.245, 0.013), 0.017,  0.006 + wind_sway, aspect, t));
+    
+    vec2 stick_base = vec2(0.125, 0.025);
+    vec2 stick_top  = vec2(0.138, 0.135);
+    vec2 pa = uv - stick_base;
+    vec2 ba = stick_top - stick_base;
+    float h_seg = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    vec2 stick_d = (pa - ba * h_seg) * vec2(aspect, 1.0);
+    float stick_mask = smoothstep(0.0020, 0.0008, length(stick_d));
+    
+    vec2 head_p = (uv - stick_top) * vec2(aspect, 1.0);
+    float head_mask = smoothstep(0.0045, 0.0025, length(head_p));
+    
+    fg_mask = max(max(ground_mask, pebbles), max(max(cairn, grass), max(stick_mask, head_mask)));
+    
+    vec2 flame_origin = stick_top + vec2(0.0, 0.005);
+    vec2 flame_p = (uv - flame_origin) * vec2(aspect, 1.0);
+    
+    // 7. Flame & Light Source Synthesis (Transforms to Void Purple & Surges Light during Hard Weather)
+    float hard_weather = clamp(u_rain_heavy * 1.0 + u_snow_amt * 0.75 + u_rain_light * 0.40, 0.0, 1.0);
+    
+    float flicker_rate = mix(1.0, 1.8, u_wind_amt) * mix(1.0, 2.2, u_rain_heavy);
+    float flame_flicker = sin(t * 18.0 * flicker_rate) * 0.12 + cos(t * 32.0 * flicker_rate) * 0.08 + sin(t * 9.0 * flicker_rate) * 0.15;
+    
+    // Normal Golden Flame Colors
+    vec3 col_core_norm   = vec3(1.00, 0.95, 0.65);
+    vec3 col_orange_norm = vec3(1.00, 0.48, 0.08);
+    vec3 col_red_norm    = vec3(0.90, 0.15, 0.02);
+    
+    // Ethereal Void Purple Flame Colors
+    vec3 col_core_void   = vec3(0.95, 0.82, 1.00); // Ultraviolet white core
+    vec3 col_mid_void    = vec3(0.72, 0.18, 0.98); // Vibrant mystical amethyst/void purple
+    vec3 col_outer_void  = vec3(0.36, 0.04, 0.78); // Deep abyss cosmic purple
+    
+    // Interpolate flame colors based on hard weather transition
+    vec3 col_core   = mix(col_core_norm, col_core_void, hard_weather);
+    vec3 col_orange = mix(col_orange_norm, col_mid_void, hard_weather);
+    vec3 col_red    = mix(col_red_norm, col_outer_void, hard_weather);
+    
+    // Flame size and height surge in hard weather
+    float flame_h = 0.024 * (1.0 + flame_flicker * 0.35) * mix(1.0, 1.35, hard_weather);
+    float flame_w = 0.008 * (1.0 + flame_flicker * 0.25) * mix(1.0, 1.25, hard_weather);
+    
+    if (flame_p.y >= -0.002 && flame_p.y <= flame_h) {
+        float f_h = max(0.0, flame_p.y / flame_h);
+        float wind_lean = (0.0025 + u_wind_amt * 0.0040 + u_rain_heavy * 0.0050) * f_h + sin(t * 12.0 + f_h * 5.0) * 0.002 * f_h;
+        float flame_taper = flame_w * (1.0 - f_h * 0.9) * (1.0 - pow(f_h, 2.0));
+        float flame_shape = smoothstep(flame_taper + 0.0015, 0.0, abs(flame_p.x - wind_lean));
+        
+        vec3 flame_color = mix(col_core, col_orange, smoothstep(0.0, 0.55, f_h));
+        flame_color = mix(flame_color, col_red, smoothstep(0.55, 1.0, f_h));
+        
+        // Surging core luminosity in hard weather
+        float flame_luminosity = 2.2 + hard_weather * 1.6;
+        torch_light += flame_color * flame_shape * flame_luminosity;
+    }
+    
+    // Ambient Light Source & Halo Expansion (Surges across rocks and shoreline)
+    float d_flame = length((uv - flame_origin) * vec2(aspect, 1.0));
+    
+    vec3 halo_norm = vec3(1.00, 0.55, 0.15); // Warm amber halo
+    vec3 halo_void = vec3(0.68, 0.20, 0.95); // Magical void purple halo
+    vec3 halo_col  = mix(halo_norm, halo_void, hard_weather);
+    
+    float warm_inner = exp(-d_flame * mix(38.0, 22.0, hard_weather)) * (0.85 + flame_flicker * 0.15);
+    float warm_outer = exp(-d_flame * mix(9.0, 5.0, hard_weather)) * (0.28 + flame_flicker * 0.06);
+    float halo_multiplier = mix(1.0, 2.4, hard_weather);
+    
+    vec3 warm_halo = halo_col * (warm_inner * 1.35 + warm_outer * 0.65) * halo_multiplier;
+    torch_light += warm_halo;
+    
+    // Rising Void Embers / Mystical Plasma Sparks during hard weather
+    if (hard_weather > 0.05) {
+        for (int i = 0; i < 4; ++i) {
+            float seed = float(i) * 17.3;
+            float ember_age = fract(t * 0.75 + hash11(seed));
+            vec2 ember_pos = flame_origin + vec2(
+                sin(t * 2.5 + seed) * 0.008 * ember_age + (0.003 * u_wind_amt * ember_age),
+                ember_age * 0.038
+            );
+            float d_ember = length((uv - ember_pos) * vec2(aspect, 1.0));
+            float ember_shape = smoothstep(0.0016, 0.0, d_ember) * (1.0 - ember_age);
+            torch_light += mix(vec3(0.85, 0.35, 1.00), vec3(0.95, 0.75, 1.00), hash11(seed * 2.1)) * ember_shape * 2.0 * hard_weather;
+        }
+    }
+}
+
+// Authentic Natural Alpine Spruce Tree
+float compute_pine_tree(vec2 uv, float t, float aspect) {
+    vec2 tree_root = vec2(0.940, 0.015);
+    float tree_height = 0.18;
+    float max_w = 0.048;
+    
+    vec2 p = (uv - tree_root) * vec2(aspect, 1.0);
+    
+    if (p.y < 0.0 || p.y > tree_height || abs(p.x) > max_w * 1.4) return 0.0;
+    
+    // Very subtle alpine spruce wind sway (bending gently towards top spire)
+    float tree_sway = sin(t * (1.3 + u_wind_amt * 1.5 + u_rain_heavy * 1.8) + uv.y * 14.0) * (0.0005 + u_wind_amt * 0.0016 + u_rain_heavy * 0.0020);
+    float sway_factor = pow(clamp(p.y / tree_height, 0.0, 1.0), 1.5);
+    p.x -= tree_sway * sway_factor;
+    
+    float y_rel = p.y / tree_height;
+    
+    float trunk_w = 0.0018 * (1.0 - y_rel * 0.7);
+    float trunk = smoothstep(trunk_w + 0.0004, trunk_w - 0.0004, abs(p.x)) * smoothstep(0.04, 0.0, p.y);
+    
+    float cone_w = max_w * (1.0 - pow(y_rel, 0.92));
+    
+    float num_tiers = 14.0;
+    float tier_idx = y_rel * num_tiers;
+    float tier_fract = fract(tier_idx);
+    
+    float tier_contour = (1.0 - tier_fract * 0.45);
+    
+    float needle1 = sin(p.y * 380.0 + p.x * 320.0) * 0.0018;
+    float needle2 = sin(p.y * 700.0 - p.x * 500.0) * 0.0010;
+    
+    float foliage_w = cone_w * tier_contour + needle1 + needle2;
+    
+    bool is_gap = (tier_fract < 0.18) && (abs(p.x) > cone_w * 0.65);
+    
+    float foliage = (abs(p.x) < foliage_w && !is_gap) ? smoothstep(foliage_w + 0.0008, foliage_w - 0.0008, abs(p.x)) : 0.0;
+    
+    vec2 apex_p = p - vec2(0.0, tree_height);
+    float apex = (abs(p.x) < 0.0009) && (p.y >= tree_height * 0.90) && (p.y <= tree_height) ? 1.0 : 0.0;
+    
+    return max(max(foliage, trunk), apex);
+}
+
+// Small, Cozy Rounded Right Shoreline Bank
+float compute_right_shore(vec2 uv, float t, float aspect) {
+    if (uv.x < 0.88) return 0.0;
+    
+    float norm_x = (uv.x - 0.88) / 0.12;
+    float base_mound = 0.038 * pow(norm_x, 1.35);
+    float bumps = noise(vec2(uv.x * 28.0, 0.0)) * 0.003;
+    float ground_y = base_mound + bumps;
+    
+    float ground_mask = smoothstep(ground_y + 0.0012, ground_y - 0.0012, uv.y);
+    
+    float wind_sway = sin(t * (1.6 + u_wind_amt * 1.8 + u_rain_heavy * 1.5)) * (0.002 + u_wind_amt * 0.003 + u_rain_heavy * 0.003);
+    float grass1 = draw_grass_blade(uv, vec2(0.895, 0.012), 0.018,  0.005 + wind_sway, aspect, t);
+    float grass2 = draw_grass_blade(uv, vec2(0.920, 0.020), 0.022, -0.006 + wind_sway, aspect, t);
+    float grass3 = draw_grass_blade(uv, vec2(0.965, 0.032), 0.016,  0.004 + wind_sway, aspect, t);
+    
+    return max(ground_mask, max(max(grass1, grass2), grass3));
+}
+
+// Botanical Autumn Leaf Shader
+vec4 compute_single_leaf(vec2 uv, vec2 leaf_pos, float size, float angle, float flip_angle, float aspect) {
+    vec2 p = (uv - leaf_pos) * vec2(aspect, 1.0);
+    
+    mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+    vec2 lp = rot * p;
+    
+    float flip = cos(flip_angle);
+    lp.x /= (max(0.18, abs(flip)) * sign(flip == 0.0 ? 1.0 : flip));
+    
+    vec2 leaf_uv = lp / size;
+    
+    if (leaf_uv.y < -1.1 || leaf_uv.y > 1.05 || abs(leaf_uv.x) > 0.8) return vec4(0.0);
+    
+    float stem_mask = 0.0;
+    if (leaf_uv.y < -0.65 && leaf_uv.y >= -1.1) {
+        float stem_w = 0.045 * (1.0 - (leaf_uv.y + 1.1) * 0.3);
+        stem_mask = smoothstep(stem_w + 0.015, stem_w - 0.015, abs(leaf_uv.x));
+    }
+    
+    float y_norm = (leaf_uv.y + 0.7) / 1.7;
+    if (y_norm < 0.0 || y_norm > 1.0) {
+        if (stem_mask > 0.0) {
+            vec3 col_stem = vec3(0.18, 0.06, 0.02);
+            return vec4(col_stem, stem_mask * 0.95);
+        }
+        return vec4(0.0);
+    }
+    
+    float profile = sin(y_norm * 3.14159) * (1.0 - pow(y_norm, 3.0) * 0.4);
+    float serration = sin(y_norm * 42.0) * 0.032;
+    float max_width = 0.42 * profile + serration;
+    
+    float blade_mask = smoothstep(max_width + 0.02, max_width - 0.02, abs(leaf_uv.x));
+    float total_mask = max(blade_mask, stem_mask);
+    
+    if (total_mask <= 0.001) return vec4(0.0);
+    
+    vec3 col_base = vec3(0.28, 0.09, 0.03);
+    vec3 col_highlight = vec3(0.40, 0.16, 0.05);
+    vec3 col_vein = vec3(0.14, 0.04, 0.01);
+    
+    float vein_mask = smoothstep(0.035, 0.0, abs(leaf_uv.x));
+    
+    float side_veins = sin(leaf_uv.y * 28.0 - abs(leaf_uv.x) * 18.0);
+    float side_vein_mask = smoothstep(0.85, 1.0, side_veins) * smoothstep(0.05, 0.35, abs(leaf_uv.x)) * 0.25;
+    float edge_light = smoothstep(0.15, max_width, abs(leaf_uv.x)) * 0.30;
+    
+    vec3 leaf_color = mix(col_base, col_highlight, edge_light);
+    leaf_color = mix(leaf_color, col_vein, max(vein_mask * 0.6, side_vein_mask));
+    
+    return vec4(leaf_color, total_mask * 0.96);
+}
+
+// 4 Subtle Autumn Leaves
+vec4 compute_falling_leaves(vec2 uv, float t, float aspect) {
+    vec4 combined = vec4(0.0);
+    float wind_mult = 1.0 + u_wind_amt * 1.6 + u_rain_heavy * 1.2;
+    
+    for (int i = 0; i < 4; ++i) {
+        float seed = float(i) * 3.41;
+        
+        float depth = 0.55 + hash12(vec2(seed, 1.0)) * 0.65;
+        float size = 0.0096 * depth;
+        
+        float drift_x = (0.032 + hash12(vec2(seed, 2.0)) * 0.020) * depth * wind_mult;
+        float fall_y = (0.024 + hash12(vec2(seed, 3.0)) * 0.016) * depth * (1.0 + u_wind_amt * 0.3 + u_rain_heavy * 0.5);
+        
+        float lx = fract(seed * 0.31 + t * drift_x + sin(t * 1.6 + seed * 3.5) * 0.035);
+        float ly = fract(seed * 0.68 - t * fall_y);
+        vec2 leaf_pos = vec2(lx, ly);
+        
+        float angle = t * (2.4 + hash12(vec2(seed, 4.0)) * 3.0) * wind_mult + seed * 4.0;
+        float flip_angle = t * (4.4 + hash12(vec2(seed, 5.0)) * 4.0) * wind_mult + seed * 2.5;
+        
+        vec4 leaf = compute_single_leaf(uv, leaf_pos, size, angle, flip_angle, aspect);
+        
+        combined.rgb = mix(combined.rgb, leaf.rgb, leaf.a);
+        combined.a = max(combined.a, leaf.a);
+    }
+    
+    return combined;
+}
+
+// 12 Bioluminescent Fireflies (4 Circling Yellow/Green Pairs + 4 Solitary Fireflies near Torch, Tree, & Land)
+vec3 compute_fireflies(vec2 uv, float t, float aspect, out vec2 firefly_pos[12], out float firefly_brightness[12], out vec3 firefly_colors[12]) {
+    vec3 firefly_glow = vec3(0.0);
+    vec3 col_yellow = vec3(1.00, 0.88, 0.38);
+    vec3 col_green  = vec3(0.24, 1.00, 0.44);
+    
+    float rain_dim = (1.0 - u_rain_light * 0.40) * (1.0 - u_rain_heavy * 0.85) * (1.0 - u_snow_amt * 0.50);
+    
+    // Group A: 4 pairs of fireflies (each pair = 1 golden yellow + 1 emerald green orbiting each other!)
+    for (int p = 0; p < 4; ++p) {
+        float seed = float(p) * 2.83;
+        
+        // Wandering collective center of the dancing pair
+        float base_x = 0.12 + float(p) * 0.25;
+        float base_y = 0.16 + sin(seed * 2.4) * 0.08;
+        
+        float wander_x = sin(t * 0.22 + seed * 3.1) * 0.045 + cos(t * 0.12 + seed * 5.2) * 0.025;
+        float wander_y = cos(t * 0.18 + seed * 2.7) * 0.035 + sin(t * 0.09 + seed * 4.1) * 0.020;
+        vec2 center = vec2(base_x + wander_x, base_y + wander_y);
+        
+        // Circling / Orbit dynamics around each other
+        float orbit_speed = 1.25 + hash12(vec2(seed, 1.5)) * 0.5;
+        float orbit_angle = t * orbit_speed + seed * 2.1;
+        float orbit_r = 0.015 + sin(t * 0.65 + seed * 1.7) * 0.007; // Dynamic spiraling distance
+        
+        vec2 orbit_vec = vec2(cos(orbit_angle) * orbit_r / aspect, sin(orbit_angle) * orbit_r);
+        
+        // Firefly 1: Warm Golden-Yellow
+        int idx1 = p * 2;
+        vec2 pos1 = center + orbit_vec;
+        float pulse1 = pow(max(0.0, sin(t * (1.1 + hash12(vec2(seed, 1.0)) * 0.7) + seed * 3.5)), 3.5) * rain_dim;
+        firefly_pos[idx1] = pos1;
+        firefly_brightness[idx1] = pulse1;
+        firefly_colors[idx1] = col_yellow;
+        
+        // Firefly 2: Vibrant Emerald-Green (circling opposite side)
+        int idx2 = p * 2 + 1;
+        vec2 pos2 = center - orbit_vec;
+        float pulse2 = pow(max(0.0, sin(t * (1.3 + hash12(vec2(seed, 2.0)) * 0.7) + seed * 4.8 + 1.4)), 3.5) * rain_dim;
+        firefly_pos[idx2] = pos2;
+        firefly_brightness[idx2] = pulse2;
+        firefly_colors[idx2] = col_green;
+        
+        if (uv.y > 0.0) {
+            // Render Firefly 1 (Yellow)
+            float dist1 = length((uv - pos1) * vec2(aspect, 1.0));
+            float core1 = smoothstep(0.0022, 0.0, dist1) * pulse1;
+            float halo1 = exp(-dist1 * 90.0) * pulse1 * 0.75 + exp(-dist1 * 24.0) * pulse1 * 0.16;
+            firefly_glow += col_yellow * (core1 * 2.0 + halo1);
+            
+            // Render Firefly 2 (Green)
+            float dist2 = length((uv - pos2) * vec2(aspect, 1.0));
+            float core2 = smoothstep(0.0022, 0.0, dist2) * pulse2;
+            float halo2 = exp(-dist2 * 90.0) * pulse2 * 0.75 + exp(-dist2 * 24.0) * pulse2 * 0.16;
+            firefly_glow += col_green * (core2 * 2.0 + halo2);
+        }
+    }
+    
+    // Group B: 4 Solitary Individual Fireflies (Near Torch, Pine Tree, Grassy Knoll, & Shoreline)
+    for (int s = 0; s < 4; ++s) {
+        int idx = 8 + s;
+        float seed_s = float(s) * 4.19 + 7.31;
+        vec2 ind_pos = vec2(0.0);
+        vec3 ind_col = (s % 2 == 0) ? col_yellow : col_green;
+        
+        if (s == 0) {
+            // 1. Hovering near the warm tiki torch flame
+            float tx = 0.14 + sin(t * 0.35 + seed_s * 1.5) * 0.025;
+            float ty = 0.17 + cos(t * 0.28 + seed_s * 2.2) * 0.035;
+            ind_pos = vec2(tx, ty);
+            ind_col = col_yellow;
+        } else if (s == 1) {
+            // 2. Hovering near the Evergreen Spruce Tree & right shoreline
+            float px = 0.92 + cos(t * 0.30 + seed_s * 1.8) * 0.030;
+            float py = 0.14 + sin(t * 0.24 + seed_s * 2.5) * 0.045;
+            ind_pos = vec2(px, py);
+            ind_col = col_green;
+        } else if (s == 2) {
+            // 3. Hovering near the left grassy knoll & cairn
+            float kx = 0.06 + sin(t * 0.32 + seed_s * 1.2) * 0.022;
+            float ky = 0.07 + cos(t * 0.22 + seed_s * 2.8) * 0.020;
+            ind_pos = vec2(kx, ky);
+            ind_col = col_green;
+        } else {
+            // 4. Hovering along the mid shoreline reeds
+            float mx = 0.52 + cos(t * 0.25 + seed_s * 1.7) * 0.045;
+            float my = 0.10 + sin(t * 0.18 + seed_s * 3.1) * 0.025;
+            ind_pos = vec2(mx, my);
+            ind_col = col_yellow;
+        }
+        
+        // Organic intermittent glow pulse (random natural appearance and fade)
+        float ind_speed = 0.75 + hash12(vec2(seed_s, 3.1)) * 0.6;
+        float ind_pulse = pow(max(0.0, sin(t * ind_speed + seed_s * 4.2)), 4.5) * rain_dim;
+        firefly_pos[idx] = ind_pos;
+        firefly_brightness[idx] = ind_pulse;
+        firefly_colors[idx] = ind_col;
+        
+        if (uv.y > 0.0) {
+            float dist_s = length((uv - ind_pos) * vec2(aspect, 1.0));
+            float core_s = smoothstep(0.0022, 0.0, dist_s) * ind_pulse;
+            float halo_s = exp(-dist_s * 90.0) * ind_pulse * 0.75 + exp(-dist_s * 24.0) * ind_pulse * 0.16;
+            firefly_glow += ind_col * (core_s * 2.0 + halo_s);
+        }
+    }
+    
+    return firefly_glow;
+}
+
+// Firefly Water Reflections (with yellow and emerald-green dual colors for all 12 fireflies)
+vec3 compute_firefly_reflections(vec2 uv, float aspect, float horizon_y, vec2 distortion, vec2 firefly_pos[12], float firefly_brightness[12], vec3 firefly_colors[12]) {
+    vec3 refl_glow = vec3(0.0);
+    
+    for (int i = 0; i < 12; ++i) {
+        vec2 f_pos = firefly_pos[i];
+        float pulse = firefly_brightness[i];
+        vec3 col = firefly_colors[i];
+        
+        if (pulse > 0.01) {
+            float refl_y = horizon_y - (f_pos.y - horizon_y) * 0.85 + distortion.y * 0.8;
+            vec2 refl_pos = vec2(f_pos.x + distortion.x * 1.2, refl_y);
+            
+            if (uv.y < horizon_y && refl_y < horizon_y) {
+                float dist = length((uv - refl_pos) * vec2(aspect, 1.0));
+                float halo = exp(-dist * 75.0) * pulse * 0.50 + exp(-dist * 20.0) * pulse * 0.14;
+                refl_glow += col * halo;
+            }
+        }
+    }
+    
+    return refl_glow;
+}
+
+// Smooth min helper for organic silhouette blending
+float smin_owl(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+// Distance to 2D line segment with variable radius
+float dist_seg_owl(vec2 p, vec2 a, vec2 b, float r0, float r1) {
+    vec2 pa = p - a;
+    vec2 ba = b - a;
+    float h = clamp(dot(pa, ba) / max(0.0001, dot(ba, ba)), 0.0, 1.0);
+    float r = mix(r0, r1, h);
+    return length(pa - ba * h) - r;
+}
+
+// Procedural Side-View Flying Owl Silhouette with Articulated Wing Flapping
+vec4 compute_flying_owl(vec2 uv, float aspect) {
+    float alpha = u_owl_data.w;
+    if (alpha <= 0.001) return vec4(0.0);
+    
+    vec2 owl_pos = u_owl_data.xy;
+    float scale = max(0.001, u_owl_data.z);
+    
+    // Relative position scaled by aspect ratio
+    vec2 p = (uv - owl_pos) * vec2(aspect, 1.0);
+    
+    // Side profile orientation:
+    // When flying right (dir.x > 0), +X is forward towards head
+    // When flying left (dir.x < 0), mirror X so bird faces forward
+    float facing = sign(u_owl_dir.x);
+    if (abs(facing) < 0.1) facing = 1.0;
+    
+    // Pitch/glide tilt relative to trajectory slope
+    float slope = clamp(u_owl_dir.y / max(0.1, abs(u_owl_dir.x)), -0.35, 0.35);
+    vec2 local_p = vec2(p.x * facing, p.y - p.x * slope * facing) / scale;
+    
+    // 1. Organic Torso & Head Profile
+    vec2 body_p = vec2(local_p.x + 0.04, local_p.y * 1.55);
+    float d_body = length(body_p) - 0.26;
+    
+    vec2 chest_p = vec2(local_p.x - 0.18, (local_p.y + 0.04) * 1.3);
+    float d_chest = length(chest_p) - 0.20;
+    
+    vec2 head_p = vec2(local_p.x - 0.34, (local_p.y - 0.07) * 1.15);
+    float d_head = length(head_p) - 0.15;
+    
+    float d_torso = smin_owl(smin_owl(d_body, d_chest, 0.08), d_head, 0.09);
+    
+    // Small hooked beak pointing forward
+    vec2 beak_p = vec2(local_p.x - 0.44, local_p.y + 0.01);
+    float d_beak = length(vec2(beak_p.x, (beak_p.y + max(0.0, beak_p.x) * 0.5) * 1.8)) - 0.05;
+    
+    // Feather tuft / ear tuft on brow
+    vec2 tuft_p = vec2(local_p.x - 0.30, local_p.y - 0.20);
+    float d_tuft = max(length(vec2(tuft_p.x * 1.8, tuft_p.y)) - 0.06, -tuft_p.y);
+    
+    // Sleek tail trailing behind
+    float tail_x = local_p.x - (-0.26);
+    float tail_y = local_p.y - (-0.03);
+    float tail_w = 0.05 + max(0.0, -tail_x) * 0.16;
+    float d_tail = max(abs(tail_y + tail_x * 0.18) - tail_w, abs(tail_x + 0.22) - 0.22);
+    
+    float d_bird_body = min(min(min(d_torso, d_beak), d_tuft), d_tail);
+    
+    // 2. Articulated Broad Wings in Side-View Flapping Profile
+    vec2 root = vec2(-0.02, 0.06);
+    float theta = u_owl_wing_phase * 0.90 + 0.20; // -0.7 to +1.1 radians
+    
+    vec2 wrist = vec2(
+        root.x - 0.36 * cos(theta),
+        root.y + 0.50 * sin(theta)
+    );
+    vec2 tip = vec2(
+        wrist.x - 0.45 * cos(theta * 0.70 - 0.20),
+        wrist.y + 0.58 * sin(theta * 0.70 + 0.20)
+    );
+    
+    float d_arm = dist_seg_owl(local_p, root, wrist, 0.16, 0.12);
+    float d_hand = dist_seg_owl(local_p, wrist, tip, 0.12, 0.03);
+    
+    // Broad wing secondary membrane
+    vec2 mid_chord = (root + wrist * 1.5 + tip * 1.2) / 3.7 + vec2(0.06 * sin(theta), -0.08 * cos(theta));
+    float d_web = length(local_p - mid_chord) - 0.28;
+    
+    float d_near_wing = min(smin_owl(d_arm, d_hand, 0.06), max(d_web, min(d_arm, d_hand) + 0.09));
+    
+    // Feather serrations
+    if (d_near_wing < 0.08) {
+        float span_t = length(local_p - root) / 0.95;
+        float feather_scallop = sin(span_t * 24.0) * 0.018 * clamp(span_t, 0.0, 1.0);
+        d_near_wing += feather_scallop;
+    }
+    
+    // Far Wing (visible during mid/up stroke)
+    float d_far_wing = 10.0;
+    if (theta > -0.15) {
+        float f_theta = theta + 0.22;
+        vec2 f_root = vec2(-0.08, 0.10);
+        vec2 f_wrist = vec2(
+            f_root.x - 0.32 * cos(f_theta),
+            f_root.y + 0.46 * sin(f_theta)
+        );
+        vec2 f_tip = vec2(
+            f_wrist.x - 0.40 * cos(f_theta * 0.70 - 0.20),
+            f_wrist.y + 0.52 * sin(f_theta * 0.70 + 0.20)
+        );
+        float f_arm = dist_seg_owl(local_p, f_root, f_wrist, 0.13, 0.09);
+        float f_hand = dist_seg_owl(local_p, f_wrist, f_tip, 0.09, 0.02);
+        d_far_wing = smin_owl(f_arm, f_hand, 0.05);
+    }
+    
+    float d_silhouette = min(min(d_bird_body, d_near_wing), d_far_wing);
+    
+    // Soft anti-aliased edge
+    float shape = smoothstep(0.035, -0.035, d_silhouette);
+    
+    // Make it less visible / atmospheric integration (soft nocturnal haze tint)
+    vec3 owl_col = vec3(0.002, 0.004, 0.009);
+    float final_alpha = shape * alpha * 0.55; // 55% max opacity for gentle, realistic silhouette
+    
+    return vec4(owl_col, final_alpha);
+}
+
+// Full Sky Renderer
+vec3 render_sky(vec2 uv, float t, float aspect, vec2 moon_pos) {
+    float total_precip = max(max(u_rain_light, u_rain_heavy), u_snow_amt);
+    
+    vec3 sky_zenith = mix(vec3(0.003, 0.008, 0.025), vec3(0.0025, 0.006, 0.018), u_rain_light);
+    sky_zenith = mix(sky_zenith, vec3(0.001, 0.003, 0.010), u_rain_heavy);
+    sky_zenith = mix(sky_zenith, vec3(0.004, 0.010, 0.028), u_snow_amt);
+    
+    vec3 sky_mid = mix(vec3(0.012, 0.035, 0.085), vec3(0.010, 0.028, 0.068), u_rain_light);
+    sky_mid = mix(sky_mid, vec3(0.005, 0.014, 0.038), u_rain_heavy);
+    sky_mid = mix(sky_mid, vec3(0.015, 0.038, 0.090), u_snow_amt);
+    
+    vec3 sky_horizon = mix(vec3(0.030, 0.075, 0.155), vec3(0.025, 0.060, 0.120), u_rain_light);
+    sky_horizon = mix(sky_horizon, vec3(0.012, 0.028, 0.065), u_rain_heavy);
+    sky_horizon = mix(sky_horizon, vec3(0.035, 0.080, 0.165), u_snow_amt);
+    
+    float grad_t = clamp((uv.y - 0.28) / 0.72, 0.0, 1.0);
+    vec3 sky_base = mix(sky_horizon, sky_zenith, pow(grad_t, 0.7));
+    
+    if (u_lightning > 0.001) {
+        float d_sky_l = length((uv - u_lightning_pos) * vec2(aspect, 1.0));
+        vec3 l_sky = vec3(0.12, 0.18, 0.32) * exp(-d_sky_l * 1.5) * u_lightning;
+        sky_base += l_sky;
+    }
+    
+    // 1. Procedural Aurora Borealis
+    float aurora_dim = (1.0 - u_rain_light * 0.40) * (1.0 - u_rain_heavy * 0.85) * (1.0 - u_snow_amt * 0.25);
+    vec3 aurora = compute_aurora_borealis(uv, t, aspect, u_aurora_amt * aurora_dim);
+    
+    float cloud_density = 0.0;
+    vec3 clouds = compute_clouds(uv, t, aspect, moon_pos, total_precip, cloud_density);
+    vec3 moon = compute_moon(uv, moon_pos, aspect, total_precip);
+    vec3 stars = compute_stars(uv, t, cloud_density, total_precip);
+    vec3 shooting_star = compute_shooting_star(uv, aspect, cloud_density, total_precip);
+    
+    return sky_base + aurora + stars + shooting_star + clouds + moon;
+}
+
+void main() {
+    vec2 uv = v_uv;
+    float aspect = u_resolution.x / u_resolution.y;
+    
+    vec2 moon_pos = vec2(0.68, 0.78);
+    float horizon_y = 0.28;
+    float total_rain = max(u_rain_light, u_rain_heavy);
+    
+    float wind_wave_mult = 1.0 + u_wind_amt * 1.3 + u_rain_light * 0.4 + u_rain_heavy * 1.2 + u_snow_amt * 0.3;
+    float water_depth = 1.0 / (max(0.001, horizon_y - uv.y) + 0.012);
+    float wave1 = sin(uv.x * 28.0 + u_time * (1.6 * wind_wave_mult) + uv.y * 80.0);
+    float wave2 = sin(uv.x * 55.0 - u_time * (1.9 * wind_wave_mult) + uv.y * 160.0);
+    float wave3 = noise(vec2(uv.x * 35.0 + u_time * 0.4, uv.y * 120.0));
+    
+    vec2 distortion = vec2(
+        (wave1 * 0.005 + wave2 * 0.003 + wave3 * 0.006) * wind_wave_mult / (water_depth * 0.10 + 1.0),
+        (wave1 * 0.003 + wave3 * 0.005) * wind_wave_mult / (water_depth * 0.10 + 1.0)
+    );
+    
+    vec3 final_color = vec3(0.0);
+    
+    if (uv.y >= horizon_y) {
+        // --- SKY & DUAL-LAYER DISTANT MOUNTAINS ---
+        vec3 sky = render_sky(uv, u_time, aspect, moon_pos);
+        
+        float mask_far_high = 0.0;
+        float mask_near_low = 0.0;
+        compute_dual_mountains(uv, aspect, horizon_y, mask_far_high, mask_near_low);
+        
+        vec3 col_far = mix(vec3(0.010, 0.022, 0.048), mix(vec3(0.009, 0.018, 0.040), vec3(0.005, 0.010, 0.022), u_rain_heavy), u_rain_light);
+        
+        if (u_lightning > 0.001) {
+            col_far += vec3(0.06, 0.10, 0.18) * u_lightning * exp(-abs(uv.x - u_lightning_pos.x) * 2.0);
+        }
+        
+        vec3 scene = mix(sky, col_far, mask_far_high * 0.90);
+        
+        vec3 col_near = vec3(0.000, 0.001, 0.004);
+        final_color = mix(scene, col_near, mask_near_low);
+        
+        // Flying Owl Silhouette in Sky
+        vec4 owl = compute_flying_owl(uv, aspect);
+        if (owl.a > 0.001) {
+            final_color = mix(final_color, owl.rgb, owl.a);
+        }
+    } else {
+        // --- SILENT LAKE WATER WITH REFLECTED MOUNTAINS, TREE, AURORA & SILKY MOONLIGHT ---
+        vec2 reflect_uv = vec2(uv.x, horizon_y + (horizon_y - uv.y) * 0.92) + distortion;
+        reflect_uv.y = clamp(reflect_uv.y, horizon_y + 0.005, 0.99);
+        
+        vec3 reflect_sky = render_sky(reflect_uv, u_time, aspect, moon_pos);
+        
+        float ref_far = 0.0;
+        float ref_near = 0.0;
+        compute_dual_mountains(reflect_uv, aspect, horizon_y, ref_far, ref_near);
+        
+        vec3 ref_scene = mix(reflect_sky, vec3(0.010, 0.022, 0.048), ref_far * 0.85);
+        vec3 reflect_mountains = mix(ref_scene, vec3(0.000, 0.001, 0.004), ref_near * 0.95);
+        
+        float ref_tree = compute_pine_tree(reflect_uv, u_time, aspect);
+        float ref_right_shore = compute_right_shore(reflect_uv, u_time, aspect);
+        vec4 ref_owl = compute_flying_owl(reflect_uv, aspect);
+        float occ = max(ref_tree, max(ref_right_shore, ref_owl.a * 0.80));
+        reflect_mountains = mix(reflect_mountains, vec3(0.000, 0.001, 0.003), occ * 0.95);
+        
+        vec3 water_ambient = mix(vec3(0.010, 0.028, 0.065), vec3(0.005, 0.014, 0.035), u_rain_heavy);
+        
+        float col_dist = abs(uv.x - moon_pos.x + distortion.x * 1.5);
+        float moon_beam = exp(-pow(col_dist * 18.0, 2.0));
+        float vert_fade = exp(-pow((horizon_y - uv.y) * 4.2, 1.25));
+        
+        float wave_ripple = sin(uv.y * 95.0 - u_time * 1.8 + noise(vec2(uv.x * 20.0, uv.y * 40.0)) * 2.5) * 0.5 + 0.5;
+        float smooth_glimmer = (pow(wave_ripple, 3.5) * 0.5 + 0.5) * moon_beam * vert_fade;
+        
+        vec3 moonlight_glitter = vec3(0.72, 0.86, 1.0) * smooth_glimmer * (0.75 - u_rain_light * 0.15 - u_rain_heavy * 0.50);
+        
+        float horizon_edge = smoothstep(0.0, 0.02, horizon_y - uv.y);
+        
+        final_color = (reflect_mountains * 0.55 + water_ambient + moonlight_glitter) * horizon_edge;
+        
+        if (u_lightning > 0.001) {
+            float refl_l_x = abs(uv.x - u_lightning_pos.x + distortion.x * 2.0);
+            float l_beam = exp(-pow(refl_l_x * 8.0, 2.0)) * exp(-(horizon_y - uv.y) * 2.5);
+            vec3 l_refl = vec3(0.35, 0.52, 0.85) * l_beam * u_lightning * 1.5;
+            final_color += l_refl * horizon_edge;
+        }
+        
+        float ripples = compute_rain_ripples(uv, u_time, aspect, horizon_y, total_rain);
+        final_color += vec3(0.15, 0.25, 0.42) * ripples * horizon_edge;
+    }
+    
+    // 1. Naturally Flowing Lake Mist
+    vec3 horizon_mist = compute_horizon_mist(uv, u_time, aspect, horizon_y, u_fog_amt);
+    final_color += horizon_mist;
+    
+    // 2. Bioluminescent Fireflies (Circling Pairs + Solitary Land/Tree/Torch Fireflies) & Lake Reflections
+    vec2 firefly_pos[12];
+    float firefly_brightness[12];
+    vec3 firefly_colors[12];
+    vec3 fireflies_air = compute_fireflies(uv, u_time, aspect, firefly_pos, firefly_brightness, firefly_colors);
+    final_color += fireflies_air;
+    
+    if (uv.y < horizon_y) {
+        vec3 fireflies_refl = compute_firefly_reflections(uv, aspect, horizon_y, distortion, firefly_pos, firefly_brightness, firefly_colors);
+        final_color += fireflies_refl;
+    }
+    
+    // 3. Falling Autumn Leaves
+    vec4 leaves = compute_falling_leaves(uv, u_time, aspect);
+    if (leaves.a > 0.01) {
+        final_color = mix(final_color, leaves.rgb, leaves.a);
+    }
+    
+    // 4. Rain & Snow Streaks
+    vec3 light_rain = compute_light_rain_streaks(uv, u_time, aspect, u_rain_light);
+    vec3 heavy_rain = compute_heavy_rain_streaks(uv, u_time, aspect, u_rain_heavy);
+    vec3 snow = compute_snowfall(uv, u_time, aspect, u_snow_amt);
+    final_color += light_rain + heavy_rain + snow;
+    
+    // 5. Foreground Left Shore
+    float fg_left_mask = 0.0;
+    vec3 torch_light = vec3(0.0);
+    compute_left_shore_scene(uv, u_time, aspect, fg_left_mask, torch_light);
+    
+    vec3 fg_left_color = vec3(0.000, 0.000, 0.001);
+    final_color = mix(final_color, fg_left_color, fg_left_mask) + torch_light;
+    
+    // 6. Foreground Right Shore with Small Dense Evergreen Tree
+    float tree_mask = compute_pine_tree(uv, u_time, aspect);
+    float right_shore_mask = compute_right_shore(uv, u_time, aspect);
+    float right_scene_mask = max(tree_mask, right_shore_mask);
+    vec3 right_scene_color = vec3(0.000, 0.001, 0.003);
+    final_color = mix(final_color, right_scene_color, right_scene_mask);
+    
+    fragColor = vec4(final_color, 1.0);
+}
+"""
+
+# Compile Main Shader Program
+prog = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)
+
+quad_verts = np.array([
+    -1.0, -1.0,
+     3.0, -1.0,
+    -1.0,  3.0
+], dtype='f4')
+
+vbo = ctx.buffer(quad_verts.tobytes())
+vao = ctx.vertex_array(prog, [(vbo, '2f', 'in_vert')])
+
+# -------------------------------------------------------------
+# High-DPI UI Overlay Shader (Live Clock Top-Right & Weather Test Pill Buttons)
+# -------------------------------------------------------------
+UI_VERTEX_SHADER = """
+#version 330 core
+in vec2 in_vert;
+in vec2 in_texcoord;
+out vec2 v_texcoord;
+
+void main() {
+    v_texcoord = in_texcoord;
+    gl_Position = vec4(in_vert, 0.0, 1.0);
+}
+"""
+
+UI_FRAGMENT_SHADER = """
+#version 330 core
+in vec2 v_texcoord;
+out vec4 fragColor;
+
+uniform sampler2D u_ui_texture;
+
+void main() {
+    fragColor = texture(u_ui_texture, v_texcoord);
+}
+"""
+
+ui_prog = ctx.program(vertex_shader=UI_VERTEX_SHADER, fragment_shader=UI_FRAGMENT_SHADER)
+
+UI_TEX_W = SCREEN_WIDTH
+UI_TEX_H = SCREEN_HEIGHT
+
+ui_quad_verts = np.array([
+    # X,    Y,     U,   V
+    -1.0, -1.0,  0.0, 1.0,
+     1.0, -1.0,  1.0, 1.0,
+    -1.0,  1.0,  0.0, 0.0,
+     1.0, -1.0,  1.0, 1.0,
+     1.0,  1.0,  1.0, 0.0,
+    -1.0,  1.0,  0.0, 0.0,
+], dtype='f4')
+
+ui_vbo = ctx.buffer(ui_quad_verts.tobytes())
+ui_vao = ctx.vertex_array(ui_prog, [(ui_vbo, '2f 2f', 'in_vert', 'in_texcoord')])
+
+ui_texture = ctx.texture((UI_TEX_W, UI_TEX_H), 4)
+ui_texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
+
+font_time = pygame.font.SysFont("segoeui", 76)
+font_date = pygame.font.SysFont("segoeui", 22)
+font_btn  = pygame.font.SysFont("segoeui", 14)
+
+# UI Overlay Visibility (Disabled by default for clean wallpaper presentation; toggle with 'B' or 'H')
+show_ui_buttons = False
+show_clock = True
+
+# Weather Modes:
+# 0 = Clear, 1 = Breeze, 2 = Light Rain, 3 = Heavy Rain, 4 = Snow, 5 = Fog, 6 = Auto Cycle
+current_weather_mode = 6 # Default to Auto
+auto_weather_preset = 0
+auto_weather_next_switch = time.time() + random.uniform(180.0, 250.0)
+
+# Aurora Intensity Levels:
+# 0 = Off (0%), 1 = Soft (30%), 2 = Moderate (50%), 3 = Bright (70%), 4 = Auto Bloom (70%)
+current_aurora_intensity_level = 4 # Default to Auto Bloom (70% Max)
+
+# Aurora Color Mode:
+# 0 = Emerald Green, 1 = Purple / Violet, 2 = Arctic Cyan
+current_aurora_color_mode = random.choice([0, 1, 2]) # Random color default
+
+target_rain_light = 0.0
+target_rain_heavy = 0.0
+target_snow = 0.0
+target_wind = 0.0
+target_fog  = 0.0
+target_aurora = 0.70
+
+current_rain_light = 0.0
+current_rain_heavy = 0.0
+current_snow = 0.0
+current_wind = 0.0
+current_fog  = 0.0
+current_aurora = 0.70
+
+# Aurora Bloom Scheduler (Every 80-150s for ~45s at 70% brightness; 50% higher chance/reduced interval in snow)
+aurora_bloom_duration = 45.0
+aurora_bloom_start = time.time() # Active at launch for 45s
+next_aurora_bloom = time.time() + 45.0 + random.uniform(80.0, 150.0)
+
+# Lightning State
+lightning_intensity = 0.0
+lightning_pos_x = 0.45
+lightning_pos_y = 0.65
+next_lightning_time = time.time() + 4.0
+lightning_flash_sequence = []
+
+# Shooting Star (Meteor Streak) State (Every 7 to 25 seconds randomly)
+shooting_star_active = False
+shooting_star_start_x = 0.50
+shooting_star_start_y = 0.75
+shooting_star_dir_x = -0.35
+shooting_star_dir_y = -0.18
+shooting_star_progress = 0.0
+shooting_star_brightness = 0.0
+shooting_star_length = 0.16
+shooting_star_duration = 0.85
+shooting_star_start_time = 0.0
+next_auto_shooting_star = time.time() + random.uniform(7.0, 25.0)
+
+def trigger_shooting_star():
+    global shooting_star_active, shooting_star_start_x, shooting_star_start_y
+    global shooting_star_dir_x, shooting_star_dir_y, shooting_star_progress
+    global shooting_star_brightness, shooting_star_length, shooting_star_duration
+    global shooting_star_start_time, next_auto_shooting_star
+    
+    shooting_star_active = True
+    shooting_star_start_time = time.time()
+    shooting_star_duration = random.uniform(0.90, 1.40) # Graceful, realistic flight speed
+    shooting_star_length = random.uniform(0.06, 0.10)   # Sleek, smaller refined tail
+    shooting_star_progress = 0.001
+    shooting_star_brightness = 0.0
+    
+    direction_left = random.choice([True, False])
+    if direction_left:
+        # Starting high on right or top-center, blazing gracefully down-left
+        shooting_star_start_x = random.uniform(0.55, 0.95)
+        shooting_star_start_y = random.uniform(0.72, 0.96)
+        angle = random.uniform(math.radians(-166), math.radians(-142))
+    else:
+        # Starting high on left or top-center, blazing gracefully down-right
+        shooting_star_start_x = random.uniform(0.05, 0.45)
+        shooting_star_start_y = random.uniform(0.72, 0.96)
+        angle = random.uniform(math.radians(-38), math.radians(-14))
+        
+    travel_dist = random.uniform(0.70, 0.95) # Travels full realistic distance across the sky
+    shooting_star_dir_x = math.cos(angle) * travel_dist
+    shooting_star_dir_y = math.sin(angle) * travel_dist
+    
+    next_auto_shooting_star = time.time() + random.uniform(7.0, 25.0)
+
+# Flying Owl Silhouette (Wildlife) State
+owl_flight_active = False
+owl_flight_start_x = -0.08
+owl_flight_start_y = 0.62
+owl_flight_end_x = 1.08
+owl_flight_end_y = 0.52
+owl_flight_pos_x = -0.10
+owl_flight_pos_y = 0.60
+owl_flight_dir_x = 1.0
+owl_flight_dir_y = -0.1
+owl_flight_scale = 0.016
+owl_flight_alpha = 0.0
+owl_flight_duration = 14.0
+owl_flight_start_time = 0.0
+owl_flight_wing_phase = 0.0
+owl_flight_sound_played = False
+next_owl_flight = time.time() + random.uniform(25.0, 50.0)
+
+def trigger_owl_flight():
+    global owl_flight_active, owl_flight_start_x, owl_flight_start_y, owl_flight_end_x, owl_flight_end_y
+    global owl_flight_pos_x, owl_flight_pos_y, owl_flight_dir_x, owl_flight_dir_y
+    global owl_flight_scale, owl_flight_alpha, owl_flight_duration
+    global owl_flight_start_time, owl_flight_wing_phase, owl_flight_sound_played, next_owl_flight
+    
+    owl_flight_active = True
+    owl_flight_start_time = time.time()
+    owl_flight_duration = random.uniform(13.0, 18.0) # Majestic, slow gliding crossing
+    owl_flight_scale = random.uniform(0.013, 0.017)   # Scaled up by 25% for crisp wing clarity
+    owl_flight_sound_played = False
+    
+    # Low-altitude flight path skimming above lake & shoreline
+    fly_left_to_right = random.choice([True, False])
+    if fly_left_to_right:
+        owl_flight_start_x = -0.08
+        owl_flight_start_y = random.uniform(0.32, 0.42)
+        owl_flight_end_x = 1.08
+        owl_flight_end_y = random.uniform(0.30, 0.39)
+    else:
+        owl_flight_start_x = 1.08
+        owl_flight_start_y = random.uniform(0.32, 0.42)
+        owl_flight_end_x = -0.08
+        owl_flight_end_y = random.uniform(0.30, 0.39)
+        
+    owl_flight_pos_x = owl_flight_start_x
+    owl_flight_pos_y = owl_flight_start_y
+    dx = owl_flight_end_x - owl_flight_start_x
+    dy = owl_flight_end_y - owl_flight_start_y
+    dist = math.hypot(dx, dy)
+    owl_flight_dir_x = dx / max(0.001, dist)
+    owl_flight_dir_y = dy / max(0.001, dist)
+    owl_flight_wing_phase = 0.0
+    owl_flight_alpha = 0.0
+    
+    next_owl_flight = time.time() + owl_flight_duration + random.uniform(45.0, 90.0)
+
+WEATHER_BUTTONS = [
+    {"label": "1: Clear",      "mode": 0, "rect": pygame.Rect(40, 36, 76, 28)},
+    {"label": "2: Breeze",     "mode": 1, "rect": pygame.Rect(122, 36, 80, 28)},
+    {"label": "3: Light Rain", "mode": 2, "rect": pygame.Rect(208, 36, 96, 28)},
+    {"label": "4: Heavy Rain", "mode": 3, "rect": pygame.Rect(310, 36, 102, 28)},
+    {"label": "5: Snow",       "mode": 4, "rect": pygame.Rect(418, 36, 74, 28)},
+    {"label": "6: Fog",        "mode": 5, "rect": pygame.Rect(498, 36, 64, 28)},
+    {"label": "A: Auto",       "mode": 6, "rect": pygame.Rect(568, 36, 72, 28)},
+]
+
+AURORA_INTENSITY_RECT = pygame.Rect(40, 72, 210, 28)
+AURORA_COLOR_RECT     = pygame.Rect(258, 72, 170, 28)
+SOUND_TOGGLE_RECT     = pygame.Rect(436, 72, 135, 28)
+SHOOTING_STAR_RECT    = pygame.Rect(579, 72, 155, 28)
+OWL_FLIGHT_RECT       = pygame.Rect(740, 72, 140, 28)
+
+last_rendered_key = ""
+
+def get_aurora_intensity_label():
+    if current_aurora_intensity_level == 0:
+        return "Aurora: Off (0%) [T]"
+    elif current_aurora_intensity_level == 1:
+        return "Aurora: Soft (30%) [T]"
+    elif current_aurora_intensity_level == 2:
+        return "Aurora: Moderate (50%) [T]"
+    elif current_aurora_intensity_level == 3:
+        return "Aurora: Bright (70%) [T]"
+    else:
+        return "Aurora: Auto Bloom [T]"
+
+def get_aurora_color_label():
+    if current_aurora_color_mode == 0:
+        return "Color: Emerald [N]"
+    elif current_aurora_color_mode == 1:
+        return "Color: Purple/Violet [N]"
+    else:
+        return "Color: Arctic Cyan [N]"
+
+def update_ui_texture(mouse_pos):
+    global last_rendered_key, show_ui_buttons, show_clock
+    now = datetime.now()
+    time_str = now.strftime("%H:%M")
+    date_str = now.strftime("%A, %d %B")
+    
+    current_key = f"{time_str}_{date_str}_{current_weather_mode}_{current_aurora_intensity_level}_{current_aurora_color_mode}_{sound_enabled}_{show_ui_buttons}_{show_clock}_{mouse_pos if show_ui_buttons else (0,0)}"
+    if current_key == last_rendered_key:
+        return
+    last_rendered_key = current_key
+
+    surf = pygame.Surface((UI_TEX_W, UI_TEX_H), pygame.SRCALPHA)
+    surf.fill((0, 0, 0, 0))
+
+    # 1. Render Clock (HH:MM) & Date - Top-Right Minimalist (if enabled)
+    if show_clock:
+        time_img = font_time.render(time_str, True, (225, 238, 252, 220))
+        time_shadow = font_time.render(time_str, True, (0, 4, 12, 160))
+        time_x = UI_TEX_W - time_img.get_width() - 48
+        time_y = 36
+        
+        surf.blit(time_shadow, (time_x + 2, time_y + 2))
+        surf.blit(time_img, (time_x, time_y))
+
+        date_img = font_date.render(date_str, True, (175, 198, 225, 180))
+        date_shadow = font_date.render(date_str, True, (0, 4, 12, 140))
+        date_x = UI_TEX_W - date_img.get_width() - 50
+        date_y = time_y + time_img.get_height() - 4
+
+        surf.blit(date_shadow, (date_x + 2, date_y + 2))
+        surf.blit(date_img, (date_x, date_y))
+
+    # 2. Render Onscreen Control & Weather Buttons (if enabled in settings or toggled via 'B'/'H')
+    if show_ui_buttons:
+        # Weather Pill Buttons (Row 1)
+        for btn in WEATHER_BUTTONS:
+            r = btn["rect"]
+            is_active = (current_weather_mode == btn["mode"])
+            is_hover = r.collidepoint(mouse_pos)
+            
+            if is_active:
+                bg_col = (110, 165, 240, 110)
+                border_col = (190, 225, 255, 180)
+                text_col = (255, 255, 255, 240)
+            elif is_hover:
+                bg_col = (70, 110, 170, 80)
+                border_col = (140, 180, 230, 140)
+                text_col = (220, 235, 250, 210)
+            else:
+                bg_col = (20, 35, 55, 55)
+                border_col = (60, 95, 145, 80)
+                text_col = (150, 180, 215, 150)
+                
+            btn_surf = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+            pygame.draw.rect(btn_surf, bg_col, (0, 0, r.width, r.height), border_radius=14)
+            pygame.draw.rect(btn_surf, border_col, (0, 0, r.width, r.height), width=1, border_radius=14)
+            
+            txt = font_btn.render(btn["label"], True, text_col)
+            tx = (r.width - txt.get_width()) // 2
+            ty = (r.height - txt.get_height()) // 2
+            btn_surf.blit(txt, (tx, ty))
+            surf.blit(btn_surf, (r.x, r.y))
+
+        # Aurora Intensity Level Button (Row 2, Left)
+        r_int = AURORA_INTENSITY_RECT
+        is_int_active = (current_aurora_intensity_level != 0)
+        bg_int = (90, 140, 210, 90) if is_int_active else (20, 35, 55, 55)
+        border_int = (160, 210, 255, 160) if is_int_active else (60, 95, 145, 80)
+        text_col_int = (255, 255, 255, 240) if is_int_active else (150, 180, 215, 150)
+        
+        int_surf = pygame.Surface((r_int.width, r_int.height), pygame.SRCALPHA)
+        pygame.draw.rect(int_surf, bg_int, (0, 0, r_int.width, r_int.height), border_radius=14)
+        pygame.draw.rect(int_surf, border_int, (0, 0, r_int.width, r_int.height), width=1, border_radius=14)
+        txt_i = font_btn.render(get_aurora_intensity_label(), True, text_col_int)
+        int_surf.blit(txt_i, ((r_int.width - txt_i.get_width()) // 2, (r_int.height - txt_i.get_height()) // 2))
+        surf.blit(int_surf, (r_int.x, r_int.y))
+
+        # Aurora Color Mode Button (Row 2, Middle)
+        r_col = AURORA_COLOR_RECT
+        if current_aurora_color_mode == 0:
+            bg_col_btn = (40, 180, 110, 100)
+            border_col_btn = (120, 255, 180, 170)
+        elif current_aurora_color_mode == 1:
+            bg_col_btn = (160, 60, 210, 100)
+            border_col_btn = (220, 140, 255, 170)
+        else:
+            bg_col_btn = (40, 160, 220, 100)
+            border_col_btn = (120, 230, 255, 170)
+            
+        col_surf = pygame.Surface((r_col.width, r_col.height), pygame.SRCALPHA)
+        pygame.draw.rect(col_surf, bg_col_btn, (0, 0, r_col.width, r_col.height), border_radius=14)
+        pygame.draw.rect(col_surf, border_col_btn, (0, 0, r_col.width, r_col.height), width=1, border_radius=14)
+        txt_c = font_btn.render(get_aurora_color_label(), True, (255, 255, 255, 240))
+        col_surf.blit(txt_c, ((r_col.width - txt_c.get_width()) // 2, (r_col.height - txt_c.get_height()) // 2))
+        surf.blit(col_surf, (r_col.x, r_col.y))
+
+        # Sound Toggle Button (Row 2, Center-Right)
+        r_snd = SOUND_TOGGLE_RECT
+        bg_snd = (60, 150, 110, 90) if sound_enabled else (120, 50, 50, 80)
+        border_snd = (140, 240, 180, 160) if sound_enabled else (220, 100, 100, 140)
+        snd_label = "Audio: ON [M]" if sound_enabled else "Audio: MUTE [M]"
+        
+        snd_surf = pygame.Surface((r_snd.width, r_snd.height), pygame.SRCALPHA)
+        pygame.draw.rect(snd_surf, bg_snd, (0, 0, r_snd.width, r_snd.height), border_radius=14)
+        pygame.draw.rect(snd_surf, border_snd, (0, 0, r_snd.width, r_snd.height), width=1, border_radius=14)
+        txt_s = font_btn.render(snd_label, True, (255, 255, 255, 240))
+        snd_surf.blit(txt_s, ((r_snd.width - txt_s.get_width()) // 2, (r_snd.height - txt_s.get_height()) // 2))
+        surf.blit(snd_surf, (r_snd.x, r_snd.y))
+
+        # Shooting Star Trigger Button (Row 2, Far-Right)
+        r_star = SHOOTING_STAR_RECT
+        is_star_active = shooting_star_active
+        is_star_hover = r_star.collidepoint(mouse_pos)
+        if is_star_active:
+            bg_star = (110, 175, 255, 120)
+            border_star = (200, 235, 255, 220)
+            text_col_star = (255, 255, 255, 255)
+        elif is_star_hover:
+            bg_star = (75, 120, 190, 85)
+            border_star = (150, 195, 245, 150)
+            text_col_star = (230, 245, 255, 220)
+        else:
+            bg_star = (20, 35, 55, 55)
+            border_star = (60, 95, 145, 80)
+            text_col_star = (160, 190, 225, 160)
+            
+        star_surf = pygame.Surface((r_star.width, r_star.height), pygame.SRCALPHA)
+        pygame.draw.rect(star_surf, bg_star, (0, 0, r_star.width, r_star.height), border_radius=14)
+        pygame.draw.rect(star_surf, border_star, (0, 0, r_star.width, r_star.height), width=1, border_radius=14)
+        txt_star = font_btn.render("✨ Shoot Star [S]", True, text_col_star)
+        star_surf.blit(txt_star, ((r_star.width - txt_star.get_width()) // 2, (r_star.height - txt_star.get_height()) // 2))
+        surf.blit(star_surf, (r_star.x, r_star.y))
+
+        # Owl Flight Trigger Button (Row 2, Extra-Right)
+        r_owl = OWL_FLIGHT_RECT
+        is_owl_active = owl_flight_active
+        is_owl_hover = r_owl.collidepoint(mouse_pos)
+        if is_owl_active:
+            bg_owl = (90, 140, 190, 110)
+            border_owl = (170, 215, 255, 200)
+            text_col_owl = (255, 255, 255, 255)
+        elif is_owl_hover:
+            bg_owl = (60, 100, 150, 80)
+            border_owl = (130, 180, 230, 140)
+            text_col_owl = (220, 235, 250, 210)
+        else:
+            bg_owl = (20, 35, 55, 55)
+            border_owl = (60, 95, 145, 80)
+            text_col_owl = (150, 180, 215, 150)
+            
+        owl_surf = pygame.Surface((r_owl.width, r_owl.height), pygame.SRCALPHA)
+        pygame.draw.rect(owl_surf, bg_owl, (0, 0, r_owl.width, r_owl.height), border_radius=14)
+        pygame.draw.rect(owl_surf, border_owl, (0, 0, r_owl.width, r_owl.height), width=1, border_radius=14)
+        txt_owl = font_btn.render("🦉 Fly Owl [O]", True, text_col_owl)
+        owl_surf.blit(txt_owl, ((r_owl.width - txt_owl.get_width()) // 2, (r_owl.height - txt_owl.get_height()) // 2))
+        surf.blit(owl_surf, (r_owl.x, r_owl.y))
+
+    raw_data = pygame.image.tostring(surf, 'RGBA', False)
+    ui_texture.write(raw_data)
+
+def trigger_lightning():
+    global next_lightning_time, lightning_flash_sequence, lightning_pos_x, lightning_pos_y
+    now = time.time()
+    next_lightning_time = now + random.uniform(5.5, 10.0)
+    lightning_pos_x = random.uniform(0.20, 0.75)
+    lightning_pos_y = random.uniform(0.55, 0.72)
+    
+    # Pick one of the 3 real recorded thunder variations at random
+    variant_idx = random.randint(0, len(thunder_sounds) - 1)
+    chosen_sound = thunder_sounds[variant_idx]
+    
+    if variant_idx == 0:
+        # Thunder 1: Sharp fast crack around 0.5s
+        lightning_flash_sequence = [
+            (now + 0.35, 0.30),
+            (now + 0.50, 1.00),
+            (now + 0.65, 0.60),
+            (now + 0.80, 0.85),
+            (now + 0.95, 0.30),
+            (now + 1.25, 0.00)
+        ]
+    elif variant_idx == 1:
+        # Thunder 2: Pre-flicker at 0.75s, massive strike at 2.65s, aftershock at 3.85s
+        lightning_flash_sequence = [
+            (now + 0.65, 0.20),
+            (now + 0.75, 0.55),
+            (now + 0.90, 0.15),
+            (now + 1.20, 0.00),
+            (now + 2.50, 0.40),
+            (now + 2.65, 1.00),
+            (now + 2.80, 0.65),
+            (now + 3.00, 0.20),
+            (now + 3.85, 0.70),
+            (now + 4.10, 0.15),
+            (now + 4.35, 0.00)
+        ]
+    else:
+        # Thunder 3: Initial blast at 0.95s, second heavy bolt at 1.60s, third pulse at 2.35s
+        lightning_flash_sequence = [
+            (now + 0.80, 0.30),
+            (now + 0.95, 1.00),
+            (now + 1.15, 0.40),
+            (now + 1.60, 0.95),
+            (now + 1.80, 0.50),
+            (now + 2.35, 0.70),
+            (now + 2.60, 0.20),
+            (now + 2.90, 0.00)
+        ]
+        
+    if sound_enabled:
+        chan_thunder.play(chosen_sound)
+        chan_thunder.set_volume(0.95)
+
+def evaluate_lightning():
+    global lightning_intensity, lightning_flash_sequence
+    now = time.time()
+    if not lightning_flash_sequence:
+        lightning_intensity = 0.0
+        return
+        
+    if now > lightning_flash_sequence[-1][0]:
+        lightning_intensity = 0.0
+        lightning_flash_sequence = []
+        return
+        
+    for i in range(len(lightning_flash_sequence) - 1):
+        t0, v0 = lightning_flash_sequence[i]
+        t1, v1 = lightning_flash_sequence[i+1]
+        if t0 <= now <= t1:
+            progress = (now - t0) / (t1 - t0)
+            lightning_intensity = v0 + (v1 - v0) * progress
+            return
+            
+    lightning_intensity = 0.0
+
+def cycle_aurora_intensity():
+    global current_aurora_intensity_level
+    current_aurora_intensity_level = (current_aurora_intensity_level + 1) % 5
+
+def cycle_aurora_color():
+    global current_aurora_color_mode
+    current_aurora_color_mode = (current_aurora_color_mode + 1) % 3
+
+def toggle_sound():
+    global sound_enabled
+    sound_enabled = not sound_enabled
+
+def main():
+    global current_weather_mode, current_aurora_intensity_level, current_aurora_color_mode
+    global target_rain_light, target_rain_heavy, target_snow, target_wind, target_fog, target_aurora
+    global current_rain_light, current_rain_heavy, current_snow, current_wind, current_fog, current_aurora
+    global next_lightning_time, lightning_intensity, next_owl_time, sound_enabled
+    global shooting_star_active, shooting_star_start_x, shooting_star_start_y, shooting_star_dir_x
+    global shooting_star_dir_y, shooting_star_progress, shooting_star_brightness, shooting_star_length
+    global shooting_star_duration, shooting_star_start_time, next_auto_shooting_star
+    global auto_weather_preset, auto_weather_next_switch, aurora_bloom_start, next_aurora_bloom
+    global show_ui_buttons, show_clock
+    global owl_flight_active, owl_flight_start_x, owl_flight_start_y, owl_flight_end_x, owl_flight_end_y
+    global owl_flight_pos_x, owl_flight_pos_y, owl_flight_dir_x, owl_flight_dir_y
+    global owl_flight_scale, owl_flight_alpha, owl_flight_duration
+    global owl_flight_start_time, owl_flight_wing_phase, owl_flight_sound_played, next_owl_flight
+
+    # Support command-line arguments and optional config.json from Wallpaper Engine
+    config_file = resource_path("config.json")
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, "r") as f:
+                cfg = json.load(f)
+                if "show_ui_buttons" in cfg:
+                    show_ui_buttons = bool(cfg["show_ui_buttons"])
+                if "show_clock" in cfg:
+                    show_clock = bool(cfg["show_clock"])
+                if "weather_mode" in cfg:
+                    w_map = {"clear": 0, "breeze": 1, "light_rain": 2, "heavy_rain": 3, "snow": 4, "fog": 5, "auto": 6}
+                    if str(cfg["weather_mode"]).lower() in w_map:
+                        current_weather_mode = w_map[str(cfg["weather_mode"]).lower()]
+                if "aurora_mode" in cfg:
+                    a_map = {"off": 0, "soft": 1, "moderate": 2, "bright": 3, "auto": 4}
+                    if str(cfg["aurora_mode"]).lower() in a_map:
+                        current_aurora_intensity_level = a_map[str(cfg["aurora_mode"]).lower()]
+                if "aurora_color" in cfg:
+                    c_map = {"emerald": 0, "purple": 1, "cyan": 2}
+                    if str(cfg["aurora_color"]).lower() in c_map:
+                        current_aurora_color_mode = c_map[str(cfg["aurora_color"]).lower()]
+                if "sound_enabled" in cfg:
+                    sound_enabled = bool(cfg["sound_enabled"])
+        except Exception:
+            pass
+
+    for arg in sys.argv[1:]:
+        if arg in ("--show-buttons", "-b"):
+            show_ui_buttons = True
+        elif arg in ("--hide-buttons", "-nobuttons"):
+            show_ui_buttons = False
+        elif arg in ("--hide-clock", "-noclock"):
+            show_clock = False
+        elif arg in ("--mute", "-mute"):
+            sound_enabled = False
+
+    prog['u_resolution'].value = (float(SCREEN_WIDTH), float(SCREEN_HEIGHT))
+    
+    running = True
+    start_time = time.time()
+    last_frame_time = time.time()
+
+    while running:
+        current_time = time.time()
+        elapsed_time = current_time - start_time
+        dt = current_time - last_frame_time
+        last_frame_time = current_time
+
+        mouse_pos = pygame.mouse.get_pos()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key in (pygame.K_b, pygame.K_h):
+                    show_ui_buttons = not show_ui_buttons # Toggle Onscreen Control Buttons
+                elif event.key in (pygame.K_1, pygame.K_c):
+                    current_weather_mode = 0 # Clear
+                elif event.key in (pygame.K_2, pygame.K_b):
+                    current_weather_mode = 1 # Breeze
+                elif event.key in (pygame.K_3, pygame.K_l):
+                    current_weather_mode = 2 # Light Rain
+                elif event.key in (pygame.K_4, pygame.K_h):
+                    current_weather_mode = 3 # Heavy Rain
+                elif event.key in (pygame.K_5, pygame.K_w):
+                    current_weather_mode = 4 # Snow
+                elif event.key in (pygame.K_6, pygame.K_f):
+                    current_weather_mode = 5 # Fog
+                elif event.key in (pygame.K_a, pygame.K_SPACE, pygame.K_TAB):
+                    current_weather_mode = 6 # Auto Weather
+                elif event.key in (pygame.K_t, pygame.K_i):
+                    cycle_aurora_intensity() # Cycle Transparency / Intensity
+                elif event.key in (pygame.K_n, pygame.K_u):
+                    cycle_aurora_color()     # Cycle Color Palette
+                elif event.key == pygame.K_m:
+                    toggle_sound()           # Mute / Unmute
+                elif event.key == pygame.K_s:
+                    trigger_shooting_star()  # Instant Shooting Star Trigger
+                elif event.key == pygame.K_o:
+                    trigger_owl_flight()     # Instant Flying Owl Trigger
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1 and show_ui_buttons:
+                    for btn in WEATHER_BUTTONS:
+                        if btn["rect"].collidepoint(event.pos):
+                            current_weather_mode = btn["mode"]
+                    if AURORA_INTENSITY_RECT.collidepoint(event.pos):
+                        cycle_aurora_intensity()
+                    elif AURORA_COLOR_RECT.collidepoint(event.pos):
+                        cycle_aurora_color()
+                    elif SOUND_TOGGLE_RECT.collidepoint(event.pos):
+                        toggle_sound()
+                    elif SHOOTING_STAR_RECT.collidepoint(event.pos):
+                        trigger_shooting_star()
+                    elif OWL_FLIGHT_RECT.collidepoint(event.pos):
+                        trigger_owl_flight()
+
+        # 1. Calculate Weather Targets
+        if current_weather_mode == 0: # Clear
+            target_rain_light = 0.0
+            target_rain_heavy = 0.0
+            target_snow = 0.0
+            target_wind = 0.0
+            target_fog  = 0.0
+        elif current_weather_mode == 1: # Breeze
+            target_rain_light = 0.0
+            target_rain_heavy = 0.0
+            target_snow = 0.0
+            target_wind = 1.0
+            target_fog  = 0.0
+        elif current_weather_mode == 2: # Light Rain
+            target_rain_light = 1.0
+            target_rain_heavy = 0.0
+            target_snow = 0.0
+            target_wind = 0.25
+            target_fog  = 0.05
+        elif current_weather_mode == 3: # Heavy Rain (+ Storm Clouds + Lightning)
+            target_rain_light = 0.0
+            target_rain_heavy = 1.0
+            target_snow = 0.0
+            target_wind = 0.85
+            target_fog  = 0.15
+        elif current_weather_mode == 4: # Snow
+            target_rain_light = 0.0
+            target_rain_heavy = 0.0
+            target_snow = 1.0
+            target_wind = 0.35
+            target_fog  = 0.05
+        elif current_weather_mode == 5: # Fog
+            target_rain_light = 0.0
+            target_rain_heavy = 0.0
+            target_snow = 0.0
+            target_wind = 0.0
+            target_fog  = 1.0
+        else: # Auto Weather: Random weather change every 180 - 250 seconds
+            if current_time >= auto_weather_next_switch:
+                modes_pool = [0, 1, 2, 3, 4, 5]
+                auto_weather_preset = random.choice([m for m in modes_pool if m != auto_weather_preset])
+                auto_weather_next_switch = current_time + random.uniform(180.0, 250.0)
+                
+            if auto_weather_preset == 0:
+                target_rain_light, target_rain_heavy, target_snow, target_wind, target_fog = 0.0, 0.0, 0.0, 0.0, 0.0
+            elif auto_weather_preset == 1:
+                target_rain_light, target_rain_heavy, target_snow, target_wind, target_fog = 0.0, 0.0, 0.0, 1.0, 0.0
+            elif auto_weather_preset == 2:
+                target_rain_light, target_rain_heavy, target_snow, target_wind, target_fog = 1.0, 0.0, 0.0, 0.25, 0.05
+            elif auto_weather_preset == 3:
+                target_rain_light, target_rain_heavy, target_snow, target_wind, target_fog = 0.0, 1.0, 0.0, 0.85, 0.15
+            elif auto_weather_preset == 4:
+                target_rain_light, target_rain_heavy, target_snow, target_wind, target_fog = 0.0, 0.0, 1.0, 0.35, 0.05
+            elif auto_weather_preset == 5:
+                target_rain_light, target_rain_heavy, target_snow, target_wind, target_fog = 0.0, 0.0, 0.0, 0.0, 1.0
+
+        # 2. Calculate Aurora Intensity Target (70% Brightness Default, Auto Bloom every 80-150s for ~45s with random colors, 50% higher chance in snow)
+        if current_aurora_intensity_level == 0:
+            target_aurora = 0.0
+        elif current_aurora_intensity_level == 1:
+            target_aurora = 0.30
+        elif current_aurora_intensity_level == 2:
+            target_aurora = 0.50
+        elif current_aurora_intensity_level == 3:
+            target_aurora = 0.70
+        else: # Auto Bloom: appears every 80-150s for ~45s with random colors and 70% brightness (50% higher chance/reduced interval in snow)
+            snow_interval_mult = 0.50 if current_snow > 0.25 else 1.0
+            if current_time >= next_aurora_bloom and (current_time - aurora_bloom_start) > 46.0:
+                aurora_bloom_start = current_time
+                current_aurora_color_mode = random.choice([0, 1, 2])
+                next_aurora_bloom = current_time + 45.0 + random.uniform(80.0, 150.0) * snow_interval_mult
+                
+            bloom_elapsed = current_time - aurora_bloom_start
+            if bloom_elapsed < 45.0:
+                if bloom_elapsed < 6.0:
+                    target_aurora = (bloom_elapsed / 6.0) * 0.70
+                elif bloom_elapsed > 39.0:
+                    target_aurora = ((45.0 - bloom_elapsed) / 6.0) * 0.70
+                else:
+                    target_aurora = 0.70
+            else:
+                target_aurora = 0.0
+
+        # Smooth Cinematic 10.0-Second Crossfade between weather conditions
+        crossfade_step = dt / 10.0
+        
+        if current_rain_light < target_rain_light:
+            current_rain_light = min(target_rain_light, current_rain_light + crossfade_step)
+        elif current_rain_light > target_rain_light:
+            current_rain_light = max(target_rain_light, current_rain_light - crossfade_step)
+
+        if current_rain_heavy < target_rain_heavy:
+            current_rain_heavy = min(target_rain_heavy, current_rain_heavy + crossfade_step)
+        elif current_rain_heavy > target_rain_heavy:
+            current_rain_heavy = max(target_rain_heavy, current_rain_heavy - crossfade_step)
+
+        if current_snow < target_snow:
+            current_snow = min(target_snow, current_snow + crossfade_step)
+        elif current_snow > target_snow:
+            current_snow = max(target_snow, current_snow - crossfade_step)
+
+        if current_wind < target_wind:
+            current_wind = min(target_wind, current_wind + crossfade_step)
+        elif current_wind > target_wind:
+            current_wind = max(target_wind, current_wind - crossfade_step)
+
+        if current_fog < target_fog:
+            current_fog = min(target_fog, current_fog + crossfade_step)
+        elif current_fog > target_fog:
+            current_fog = max(target_fog, current_fog - crossfade_step)
+
+        aurora_blend = min(1.0, dt * 1.5)
+        current_aurora += (target_aurora - current_aurora) * aurora_blend
+
+        # Handle Lightning Events during Heavy Rain
+        if current_rain_heavy > 0.35:
+            if current_time >= next_lightning_time:
+                trigger_lightning()
+            evaluate_lightning()
+        else:
+            lightning_intensity = 0.0
+
+        # Handle Shooting Star / Meteor Progress & Envelope
+        if shooting_star_active:
+            elapsed_s = current_time - shooting_star_start_time
+            norm_t = elapsed_s / max(0.01, shooting_star_duration)
+            if norm_t >= 1.0:
+                shooting_star_active = False
+                shooting_star_progress = 0.0
+                shooting_star_brightness = 0.0
+            else:
+                shooting_star_progress = norm_t
+                # Smooth envelope: quick 8% fade-in, sustained flight, elegant burn-out at end (last 16%)
+                if norm_t < 0.08:
+                    shooting_star_brightness = norm_t / 0.08
+                elif norm_t > 0.84:
+                    shooting_star_brightness = (1.0 - norm_t) / 0.16
+                else:
+                    shooting_star_brightness = 1.0
+        else:
+            if current_rain_heavy < 0.30 and current_time >= next_auto_shooting_star:
+                trigger_shooting_star()
+
+        # Handle Flying Owl Silhouette Lifecycle & Articulated Wing Flapping
+        if owl_flight_active:
+            flight_elapsed = current_time - owl_flight_start_time
+            flight_norm_t = flight_elapsed / max(0.01, owl_flight_duration)
+            if flight_norm_t >= 1.0:
+                owl_flight_active = False
+                owl_flight_alpha = 0.0
+            else:
+                # Interpolate position smoothly across horizon
+                owl_flight_pos_x = owl_flight_start_x + (owl_flight_end_x - owl_flight_start_x) * flight_norm_t
+                y_wave = math.sin(flight_elapsed * 1.8) * 0.008
+                owl_flight_pos_y = owl_flight_start_y + (owl_flight_end_y - owl_flight_start_y) * flight_norm_t + y_wave
+                
+                # Alpha Envelope: Smooth 12% fade in, sustained flight, 15% fade out disappearing into horizon
+                if flight_norm_t < 0.12:
+                    owl_flight_alpha = flight_norm_t / 0.12
+                elif flight_norm_t > 0.85:
+                    owl_flight_alpha = (1.0 - flight_norm_t) / 0.15
+                else:
+                    owl_flight_alpha = 1.0
+                    
+                # Natural Owl Flap-Glide Motion (3 soft wingbeats then majestic horizontal glide)
+                cycle_period = 3.6
+                cycle_time = flight_elapsed % cycle_period
+                if cycle_time < 1.6:
+                    owl_flight_wing_phase = math.sin(cycle_time * 11.5) * 0.85
+                else:
+                    owl_flight_wing_phase = 0.05
+                    
+                # Synchronized owl call while gliding mid-sky
+                if sound_enabled and not owl_flight_sound_played and 0.35 <= flight_norm_t <= 0.65:
+                    chosen_owl = random.choice(owl_sounds)
+                    chan_owl.play(chosen_owl)
+                    chan_owl.set_volume(0.35)
+                    owl_flight_sound_played = True
+        else:
+            owl_flight_alpha = 0.0
+            if current_rain_heavy < 0.35 and current_time >= next_owl_flight:
+                trigger_owl_flight()
+
+        # Handle Night Owl Calls (Occasional wildlife in spruce tree, random calm variation at consistent gentle volume)
+        if sound_enabled and current_rain_heavy < 0.20 and not owl_flight_active:
+            if current_time >= next_owl_time:
+                chosen_owl = random.choice(owl_sounds)
+                chan_owl.play(chosen_owl)
+                chan_owl.set_volume(0.35)
+                next_owl_time = current_time + random.uniform(30.0, 60.0)
+
+        # Dynamic Continuous Real-Time Audio Mixer Layering
+        if sound_enabled:
+            master_vol = 1.0
+            chan_torch.set_volume(0.32 * master_vol)
+            chan_water.set_volume((0.22 + current_wind * 0.12) * master_vol)
+            chan_wind.set_volume((0.04 + current_wind * 0.55 + current_rain_heavy * 0.25) * master_vol)
+            
+            # Dedicated Rain Sound Layering
+            chan_rain_l.set_volume(current_rain_light * 0.40 * master_vol)
+            chan_rain_h.set_volume(current_rain_heavy * 0.75 * master_vol)
+            
+            # Snow Ambient
+            chan_snow.set_volume(current_snow * 0.40 * master_vol)
+            
+            # Night Crickets (active during calm, dry nights)
+            precip = max(current_rain_light, max(current_rain_heavy, current_snow))
+            crickets_vol = max(0.0, 0.22 * (1.0 - precip * 2.0) * (1.0 - current_wind * 0.6))
+            chan_crickets.set_volume(crickets_vol * master_vol)
+        else:
+            chan_torch.set_volume(0.0)
+            chan_water.set_volume(0.0)
+            chan_wind.set_volume(0.0)
+            chan_rain_l.set_volume(0.0)
+            chan_rain_h.set_volume(0.0)
+            chan_snow.set_volume(0.0)
+            chan_crickets.set_volume(0.0)
+
+        update_ui_texture(mouse_pos)
+
+        # Pass Dynamic Uniforms to GPU
+        prog['u_time'].value = float(elapsed_time)
+        prog['u_rain_light'].value = float(current_rain_light)
+        prog['u_rain_heavy'].value = float(current_rain_heavy)
+        prog['u_snow_amt'].value = float(current_snow)
+        prog['u_wind_amt'].value = float(current_wind)
+        prog['u_fog_amt'].value = float(current_fog)
+        prog['u_aurora_amt'].value = float(current_aurora)
+        prog['u_aurora_color_mode'].value = int(current_aurora_color_mode)
+        prog['u_lightning'].value = float(lightning_intensity * current_rain_heavy)
+        prog['u_lightning_pos'].value = (float(lightning_pos_x), float(lightning_pos_y))
+        prog['u_shooting_star'].value = (float(shooting_star_start_x), float(shooting_star_start_y), float(shooting_star_dir_x), float(shooting_star_dir_y))
+        prog['u_shooting_star_progress'].value = float(shooting_star_progress)
+        prog['u_shooting_star_brightness'].value = float(shooting_star_brightness)
+        prog['u_shooting_star_len'].value = float(shooting_star_length)
+        prog['u_owl_data'].value = (float(owl_flight_pos_x), float(owl_flight_pos_y), float(owl_flight_scale), float(owl_flight_alpha))
+        prog['u_owl_dir'].value = (float(owl_flight_dir_x), float(owl_flight_dir_y))
+        prog['u_owl_wing_phase'].value = float(owl_flight_wing_phase)
+
+        # 1. Render Background GPU Fullscreen Shader
+        ctx.disable(moderngl.BLEND)
+        ctx.clear(0.0, 0.0, 0.0, 1.0)
+        vao.render(moderngl.TRIANGLES)
+
+        # 2. Render UI Clock & Test Pill Buttons with Alpha Blending
+        ctx.enable(moderngl.BLEND)
+        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+        ui_texture.use(0)
+        ui_prog['u_ui_texture'].value = 0
+        ui_vao.render(moderngl.TRIANGLES)
+
+        # Flip buffers (Synchronized to monitor's native refresh rate via VSync)
+        pygame.display.flip()
+        clock.tick(0)
+
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
