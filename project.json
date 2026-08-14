@@ -1,0 +1,84 @@
+{
+  "file": "wallpaper_app.exe",
+  "title": "Night Sky - Aurora Borealis & Mountain Lake",
+  "description": "A photorealistic, relaxing night mountain lake with dynamic atmospheric weather, silky moonlight, 100% real nature sounds, procedural aurora borealis, stars, and occasional flying owl silhouettes.",
+  "type": "application",
+  "arguments": "",
+  "visibility": "public",
+  "tags": ["Nature", "Relaxing", "Fantasy", "Atmospheric"],
+  "contentrating": "Everyone",
+  "general": {
+    "properties": {
+      "show_ui_buttons": {
+        "text": "Show Onscreen Control Buttons",
+        "type": "bool",
+        "value": false,
+        "order": 1
+      },
+      "show_clock": {
+        "text": "Show Minimalist Clock & Date",
+        "type": "bool",
+        "value": true,
+        "order": 2
+      },
+      "weather_mode": {
+        "text": "Weather Atmosphere",
+        "type": "combo",
+        "value": "auto",
+        "options": [
+          {"label": "Auto Cycle (Random 180-250s)", "value": "auto"},
+          {"label": "Clear Starry Night", "value": "clear"},
+          {"label": "Gentle Mountain Breeze", "value": "breeze"},
+          {"label": "Light Rain & Drizzle", "value": "light_rain"},
+          {"label": "Thunderstorm & Lightning", "value": "heavy_rain"},
+          {"label": "Winter Snowfall", "value": "snow"},
+          {"label": "Lake Mist & Fog", "value": "fog"}
+        ],
+        "order": 3
+      },
+      "aurora_intensity": {
+        "text": "Aurora Borealis Mode",
+        "type": "combo",
+        "value": "auto",
+        "options": [
+          {"label": "Auto Bloom (80-150s, 45s bloom at 70%)", "value": "auto"},
+          {"label": "Off (0%)", "value": "off"},
+          {"label": "Soft (30%)", "value": "soft"},
+          {"label": "Moderate (50%)", "value": "moderate"},
+          {"label": "Bright (70%)", "value": "bright"}
+        ],
+        "order": 4
+      },
+      "aurora_color": {
+        "text": "Aurora Color Palette",
+        "type": "combo",
+        "value": "random",
+        "options": [
+          {"label": "Random Color Each Bloom", "value": "random"},
+          {"label": "Emerald Green", "value": "emerald"},
+          {"label": "Purple / Violet", "value": "purple"},
+          {"label": "Arctic Cyan", "value": "cyan"}
+        ],
+        "order": 5
+      },
+      "shooting_stars": {
+        "text": "Autonomous Shooting Stars (7-25s)",
+        "type": "bool",
+        "value": true,
+        "order": 6
+      },
+      "owl_silhouette": {
+        "text": "Flying Owl Silhouette (Wildlife)",
+        "type": "bool",
+        "value": true,
+        "order": 7
+      },
+      "sound_enabled": {
+        "text": "Nature Audio & Ambiance",
+        "type": "bool",
+        "value": true,
+        "order": 8
+      }
+    }
+  }
+}
